@@ -72,6 +72,7 @@
       normalized.dimensions = Array.isArray(source.dimensions) ? source.dimensions.map((dim) => {
         const result = Object.assign(newDimension(), dim || {});
         result.id = result.id || uid('dim');
+        result.image = typeof result.image === 'string' && result.image.startsWith('data:image/') ? result.image : '';
         result.contributors = Array.isArray(result.contributors) && result.contributors.length
           ? result.contributors.map((part) => Object.assign(newContributor(), part || {}))
           : [newContributor()];
@@ -99,6 +100,17 @@
         alert('保存失败：截图可能过大，已超出浏览器本地存储容量。请删除部分截图后重试。');
       }
     }, 120);
+  }
+
+  function persistNow() {
+    clearTimeout(saveTimer);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      return true;
+    } catch (error) {
+      alert('保存失败：截图可能过大，已超出浏览器本地存储容量。请删除部分截图后重试。');
+      return false;
+    }
   }
 
   function n(value) {
@@ -199,8 +211,12 @@
         <div class="iec-head-row">
           <h3 class="panel-title"><span class="dot"></span>报告与项目参数</h3>
           <div class="btn-row iec-report-actions">
+            <button class="btn btn-ghost" data-action="import-json">导入 JSON</button>
+            <button class="btn btn-ghost" data-action="export-json">导出 JSON</button>
             <button class="btn btn-ghost" data-action="export-word">导出 Word (.doc)</button>
             <button class="btn btn-primary" data-action="export-pdf">导出 PDF（打印）</button>
+            <button class="btn btn-del" data-action="clear-project">清空当前校核</button>
+            <input class="iec-json-file" type="file" accept="application/json,.json">
           </div>
         </div>
         <div class="grid cols-4">
@@ -299,22 +315,26 @@
         </div>`;
     }).join('');
     const chart = result.validParts.length && result.sigma > 0
-      ? `<div class="normal-chart-wrap iec-chain-chart">${T.normalChart({
+      ? `<div class="iec-chain-chart">${T.normalChart({
           title: `尺寸链公差带分布（RSS 3σ = ±${f(result.rss)} mm）`,
-          mean: result.nominal, sigma: result.sigma, tol: result.rss, width: 760, height: 300,
-          note: `正式判定采用 RSS：σ = ${f(result.sigma)} mm，3σ = RSS = ±${f(result.rss)} mm；极值累积 ±${f(result.wc)} mm 仅作参考。`,
+          mean: result.nominal, sigma: result.sigma, tol: result.rss, width: 520, height: 300,
+          note: `σ = ${f(result.sigma)} mm；3σ = RSS = ±${f(result.rss)} mm；极值 ±${f(result.wc)} mm 仅作参考。`,
         })}</div>`
-      : '';
+      : `<div class="iec-chain-chart iec-chain-chart-empty">填写完整尺寸链后显示 RSS 3σ 公差带分布图</div>`;
     return `
       <div class="iec-chain-box">
-        <div class="iec-chain-head">
-          <div><strong>尺寸链环节</strong><small>尺寸方向决定闭环名义值；公差贡献按类型折算后进行 RSS 合成。</small></div>
-          <button class="btn btn-ghost btn-sm" data-action="add-chain" data-level="${levelIndex}" data-dim="${dimIndex}">添加尺寸</button>
+        <div class="iec-chain-layout">
+          <div class="iec-chain-inputs">
+            <div class="iec-chain-head">
+              <div><strong>尺寸链环节</strong><small>尺寸方向决定闭环名义值；公差贡献按类型折算后进行 RSS 合成。</small></div>
+              <button class="btn btn-ghost btn-sm" data-action="add-chain" data-level="${levelIndex}" data-dim="${dimIndex}">添加尺寸</button>
+            </div>
+            <div class="iec-chain-labels"><span>尺寸名</span><span>尺寸/mm</span><span>公差 t/mm</span><span>公差类型</span><span>方向</span><span>折算系数</span><span></span></div>
+            ${rows}
+            <div class="iec-tol-assumption">轮廓度与位置度默认按总公差带折算为单侧 t/2；普通尺寸公差按 ±t；平面度、平行度、垂直度按全值 t。必要时选择“自定义”调整系数。</div>
+          </div>
+          ${chart}
         </div>
-        <div class="iec-chain-labels"><span>尺寸名</span><span>尺寸/mm</span><span>公差 t/mm</span><span>公差类型</span><span>方向</span><span>折算系数</span><span></span></div>
-        ${rows}
-        <div class="iec-tol-assumption">轮廓度与位置度默认按总公差带折算为单侧 t/2；普通尺寸公差按 ±t；平面度、平行度、垂直度按全值 t。必要时选择“自定义”调整系数。</div>
-        ${chart}
       </div>`;
   }
 
@@ -423,6 +443,18 @@
       if (input) input.click();
       return;
     } else if (action === 'remove-image' && dim) dim.image = '';
+    else if (action === 'import-json') {
+      const input = currentHost.querySelector('.iec-json-file');
+      if (input) input.click();
+      return;
+    } else if (action === 'export-json') return exportJson();
+    else if (action === 'clear-project') {
+      if (!confirm('确定清空当前校核吗？三级系统参数、所有关键尺寸、尺寸链和已上传图片都将被删除，此操作无法撤销。建议先导出 JSON 备份。')) return;
+      clearTimeout(saveTimer);
+      state = defaultState();
+      try { localStorage.removeItem(STORAGE_KEY); } catch (error) { /* ignore */ }
+      persistNow();
+    }
     else if (action === 'export-pdf') return exportPdf();
     else if (action === 'export-word') return exportWord();
     else return;
@@ -536,6 +568,43 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function exportJson() {
+    persistNow();
+    const payload = Object.assign({}, state, { exportedAt: new Date().toISOString() });
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = reportFilename('json');
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function importJson(file, input) {
+    if (!file) return;
+    if (file.size > 30 * 1024 * 1024) {
+      alert('JSON 文件超过 30 MB，请减少或压缩截图后再导入。');
+      input.value = '';
+      return;
+    }
+    file.text().then((text) => {
+      const raw = JSON.parse(text);
+      if (!raw || raw.schemaVersion !== 1 || !raw.project || !Array.isArray(raw.levels)) {
+        throw new Error('文件不是有效的绝缘距离系统校核 JSON（schemaVersion 1）。');
+      }
+      if (!confirm('导入将替换当前校核的全部参数、关键尺寸和图片，是否继续？')) return;
+      state = normalize(raw);
+      if (persistNow()) {
+        renderAll();
+        alert('校核项目导入成功，JSON 中的图片已一并恢复。');
+      }
+    }).catch((error) => {
+      alert(`导入失败：${error.message || 'JSON 文件格式错误'}`);
+    }).finally(() => { input.value = ''; });
+  }
+
   T.register({
     id: 'iec60664',
     replace: true,
@@ -554,6 +623,10 @@
       });
       host.addEventListener('change', (event) => {
         const target = event.target;
+        if (target.classList.contains('iec-json-file')) {
+          importJson(target.files && target.files[0], target);
+          return;
+        }
         if (target.classList.contains('iec-image-file') && target.files && target.files[0]) {
           const levelIndex = Number(target.dataset.level);
           const dimIndex = Number(target.dataset.dim);
