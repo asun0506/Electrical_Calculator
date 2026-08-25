@@ -496,8 +496,12 @@
       if (dim.toleranceMode !== 'chain') return '';
       const r = summary.results[dimIndex];
       const rows = r.validParts.map((part) => `<tr><td>${E.escapeHtml(part.name || '尺寸')}</td><td>${f(part.size)}</td><td>${f(part.tolerance)}</td><td>${E.escapeHtml((TOL_TYPES[part.type] || TOL_TYPES.custom).label)}</td><td>${part.direction > 0 ? '增环' : '减环'}</td><td>${f(part.factor)}</td><td>${f(part.contribution)}</td></tr>`).join('');
-      const chart = r.validParts.length && r.sigma > 0 ? T.normalChart({ title: `${E.escapeHtml(dim.name || '关键尺寸')} — RSS 3σ 公差带`, mean: r.nominal, sigma: r.sigma, tol: r.rss, width: 720, height: 270, note: `σ = ${f(r.sigma)} mm，3σ = RSS = ±${f(r.rss)} mm；极值 ±${f(r.wc)} mm 仅作参考。` }) : '';
-      return `<div class="report-chain"><h4>${E.escapeHtml(dim.name || '关键尺寸')} — 尺寸链明细</h4><table><thead><tr><th>尺寸名</th><th>尺寸/mm</th><th>公差t/mm</th><th>类型</th><th>方向</th><th>系数</th><th>有效贡献/mm</th></tr></thead><tbody>${rows || '<tr><td colspan="7">尚未填写完整尺寸链</td></tr>'}</tbody></table>${chart}</div>`;
+      const chart = r.validParts.length && r.sigma > 0 ? T.normalChart({ title: `${E.escapeHtml(dim.name || '关键尺寸')} — RSS 3σ 公差带`, mean: r.nominal, sigma: r.sigma, tol: r.rss, width: 480, height: 250, note: `σ = ${f(r.sigma)} mm；3σ = RSS = ±${f(r.rss)} mm；极值 ±${f(r.wc)} mm 仅作参考。` }) : '<div class="report-chart-empty">尺寸链不完整，暂无分布图</div>';
+      return `<div class="report-chain"><h4>${E.escapeHtml(dim.name || '关键尺寸')} — 尺寸链明细与公差分布</h4>
+        <table class="report-chain-layout"><colgroup><col style="width:57%"><col style="width:43%"></colgroup><tr>
+          <td class="report-chain-table-cell"><table class="report-chain-table"><thead><tr><th>尺寸名</th><th>尺寸/mm</th><th>公差/mm</th><th>类型</th><th>方向</th><th>系数</th><th>贡献/mm</th></tr></thead><tbody>${rows || '<tr><td colspan="7">尚未填写完整尺寸链</td></tr>'}</tbody></table></td>
+          <td class="report-chain-chart-cell">${chart}</td>
+        </tr></table></div>`;
     }).join('');
   }
 
@@ -526,12 +530,12 @@
 
   function reportStyle() {
     return `
-      body{font-family:"Microsoft YaHei",Arial,sans-serif;color:#172230;background:#fff;margin:0} .iec-report{max-width:1120px;margin:0 auto;padding:22px;font-size:12px;line-height:1.45}
+      body{font-family:"Microsoft YaHei",Arial,sans-serif;color:#172230;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact} .iec-report{max-width:1120px;margin:0 auto;padding:18px;font-size:12px;line-height:1.4}
       .iec-report header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #173b5e;padding-bottom:14px;margin-bottom:16px}.iec-report header p{margin:0;color:#9b6500;font-size:10px;letter-spacing:.14em}.iec-report h1{font-size:23px;margin:3px 0}.iec-report h2{font-size:16px;color:#173b5e;border-bottom:1px solid #aebac6;padding-bottom:6px}.iec-report h2 span{font-size:9px;border:1px solid #71879a;padding:2px 5px;margin-right:8px}.iec-report h4{margin:14px 0 6px}
       .report-overall{padding:8px 14px;border:2px solid;font-size:16px}.report-pass{color:#08775a}.report-fail{color:#b42318}.report-pending{color:#9a6400}
       .iec-report table{width:100%;border-collapse:collapse;margin:8px 0 14px;table-layout:fixed}.iec-report th,.iec-report td{border:1px solid #bfc9d3;padding:6px 7px;vertical-align:middle;word-break:break-word}.iec-report th{background:#edf2f6;color:#274159}.report-meta th{width:12%}.report-meta td{width:38%}.report-boundary th{width:10%}.report-checks th:nth-child(1){width:3%}.report-checks th:nth-child(2){width:16%}.report-checks th:nth-child(3){width:20%}.report-checks th:nth-child(4){width:9%}.report-checks th:nth-child(5),.report-checks th:nth-child(6),.report-checks th:nth-child(7),.report-checks th:nth-child(8){width:9%}.report-checks th:nth-child(9){width:8%}
-      .report-image{display:block;max-width:100%;max-height:150px;margin:auto}.report-level{break-before:page;page-break-before:always}.report-chain{break-inside:avoid;page-break-inside:avoid}.report-chain svg{max-height:250px}.chart-title{text-align:center;font-weight:700;margin-top:8px}.note{padding:6px;color:#43596c}.report-conclusion{border:2px solid #173b5e;padding:10px 14px;break-inside:avoid}.iec-report footer{margin-top:16px;border-top:1px solid #cfd7e1;padding-top:8px;color:#5e6b78;font-size:10px}
-      @page{size:A4 landscape;margin:10mm}`;
+      .report-image{display:block;max-width:100%;max-height:150px;margin:auto}.report-level{break-before:page;page-break-before:always}.report-chain{break-inside:avoid;page-break-inside:avoid;margin-top:10px}.iec-report table.report-chain-layout{margin:5px 0 10px;table-layout:fixed;border-collapse:collapse}.report-chain-layout>tbody>tr>td{border:0;padding:0 6px;vertical-align:top}.report-chain-layout>tbody>tr>td:first-child{padding-left:0}.report-chain-layout>tbody>tr>td:last-child{padding-right:0}.iec-report table.report-chain-table{margin:0;font-size:9px;table-layout:fixed}.report-chain-table th,.report-chain-table td{padding:4px 3px}.report-chain-table th:nth-child(1){width:22%}.report-chain-table th:nth-child(2),.report-chain-table th:nth-child(3),.report-chain-table th:nth-child(5),.report-chain-table th:nth-child(6),.report-chain-table th:nth-child(7){width:11%}.report-chain-table th:nth-child(4){width:23%}.report-chain-chart-cell{border:1px solid #cbd5df!important;background:#fbfcfd}.report-chain-chart-cell .chart-title{text-align:center;font-size:11px;font-weight:700;margin:2px 0}.report-chain-chart-cell svg{display:block;max-height:205px}.report-chain-chart-cell .note{margin-top:2px;padding:4px 6px;font-size:8px;color:#43596c}.report-chart-empty{display:flex;align-items:center;justify-content:center;min-height:190px;color:#687887;font-size:10px}.chart-title{text-align:center;font-weight:700;margin-top:8px}.note{padding:6px;color:#43596c}.report-conclusion{border:2px solid #173b5e;padding:10px 14px;break-inside:avoid}.iec-report footer{margin-top:16px;border-top:1px solid #cfd7e1;padding-top:8px;color:#5e6b78;font-size:10px}
+      @page{size:A4 landscape;margin:8mm}`;
   }
 
   function reportFilename(ext) {
