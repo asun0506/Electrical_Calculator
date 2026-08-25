@@ -929,3 +929,108 @@ body { background: var(--bg); line-height: 1.55; }
   .nav-group-label { flex-basis: 100%; }
   .nav-item { flex: 1 1 180px; }
 }
+
+/* ---------- IEC 60664 三级系统设计校核 ---------- */
+.iec-head-row, .iec-level-title, .iec-level-footer, .iec-chain-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 14px;
+}
+.iec-head-row .panel-title { flex: 1; margin-bottom: 0; }
+.iec-report-actions { margin: 0; }
+.iec-plain-input, .iec-table-input, .iec-table-select, .iec-chain-row input, .iec-chain-row select {
+  width: 100%; min-height: 36px; padding: 7px 9px; border: 1px solid #bcc7d2; border-radius: 3px;
+  background: #fff; color: var(--text); font: 13px var(--font); outline: none;
+}
+.iec-plain-input:focus, .iec-table-input:focus, .iec-table-select:focus, .iec-chain-row input:focus, .iec-chain-row select:focus {
+  border-color: #476e91; box-shadow: 0 0 0 2px rgba(23, 59, 94, .11);
+}
+.iec-level-panel { border-top: 2px solid #b57a12; }
+.iec-level-title { margin-bottom: 15px; }
+.iec-level-title > div { display: flex; align-items: center; gap: 9px; }
+.iec-level-title h3 { margin: 0; color: #15334f; font-size: 18px; }
+.iec-level-code {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 54px; height: 25px; padding: 0 7px;
+  border: 1px solid #71879a; border-radius: 2px; color: #43596c; font: 700 9px var(--mono); letter-spacing: .05em;
+}
+.iec-level-status, .iec-status {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 54px; padding: 4px 8px;
+  border: 1px solid; border-radius: 2px; font-size: 11px; font-weight: 700; white-space: nowrap;
+}
+.iec-level-status.pass, .iec-status.pass { color: var(--success); background: var(--success-soft); border-color: #8bc8b7; }
+.iec-level-status.fail, .iec-status.fail, .iec-level-status.invalid { color: var(--danger); background: var(--danger-soft); border-color: #dfa6a0; }
+.iec-level-status.pending, .iec-status.pending { color: var(--warning); background: var(--warning-soft); border-color: #dec48c; }
+.iec-standard-grid { margin: 15px 0; }
+.iec-table-wrap { overflow-x: auto; border: 1px solid #c7d1da; }
+.iec-check-table { width: 100%; min-width: 1180px; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+.iec-check-table th, .iec-check-table td { border: 1px solid #d7dee5; padding: 7px; vertical-align: middle; }
+.iec-check-table th { background: #edf2f6; color: #334b61; font-weight: 700; text-align: left; }
+.iec-check-table th:nth-child(1) { width: 34px; }
+.iec-check-table th:nth-child(2) { width: 150px; }
+.iec-check-table th:nth-child(3) { width: 150px; }
+.iec-check-table th:nth-child(4) { width: 110px; }
+.iec-check-table th:nth-child(5), .iec-check-table th:nth-child(7), .iec-check-table th:nth-child(8) { width: 80px; }
+.iec-check-table th:nth-child(6) { width: 120px; }
+.iec-check-table th:nth-child(9) { width: 76px; }
+.iec-check-table th:nth-child(10) { width: 125px; }
+.iec-check-row.fail { background: #fff8f7; }
+.iec-check-row.pass { background: #fbfefd; }
+.iec-row-index, .iec-number { text-align: center; font-family: var(--mono); }
+.iec-tolerance-value { text-align: center; font-family: var(--mono); }
+.iec-tolerance-value small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 9px; }
+.iec-image-cell { text-align: center; }
+.iec-image-button, .iec-image-empty { width: 132px; height: 78px; border: 1px dashed #9aaaba; background: #f5f7f9; cursor: pointer; }
+.iec-image-button { padding: 2px; }
+.iec-image-button img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.iec-image-empty { color: #607385; font-size: 11px; }
+.iec-image-file { display: none; }
+.iec-actions { white-space: nowrap; }
+.iec-actions .btn + .btn { margin-left: 5px; }
+.iec-detail-row > td { padding: 0 !important; background: #f3f6f8; }
+.iec-dim-editor { padding: 15px; border-left: 3px solid #7690a7; }
+.iec-editor-top { display: grid; grid-template-columns: repeat(4, minmax(145px, 1fr)); gap: 12px; align-items: end; }
+.iec-rss-result { min-height: 56px; padding: 8px 11px; border: 1px solid #bdc9d4; background: #fff; }
+.iec-rss-result span, .iec-rss-result b { display: block; }
+.iec-rss-result span { color: var(--text-muted); font-size: 10px; }
+.iec-rss-result b { margin-top: 3px; color: #173b5e; font: 700 15px var(--mono); }
+.iec-rss-result.secondary { background: #f8fafb; }
+.iec-chain-box { margin-top: 14px; padding: 13px; border: 1px solid #bdc9d4; background: #fff; }
+.iec-chain-head strong, .iec-chain-head small { display: block; }
+.iec-chain-head small { color: var(--text-muted); font-size: 11px; }
+.iec-chain-labels, .iec-chain-row { display: grid; grid-template-columns: 1.3fr .8fr .8fr 1.15fr .7fr .65fr 32px; gap: 7px; align-items: center; }
+.iec-chain-labels { margin: 11px 0 5px; color: var(--text-muted); font-size: 10px; font-weight: 700; }
+.iec-chain-row { margin-bottom: 7px; }
+.iec-chain-row input:disabled { background: #edf1f4; color: #596a79; }
+.iec-tol-assumption { margin-top: 10px; padding: 8px 10px; border-left: 3px solid #b57a12; background: #fff8e7; color: #71541a; font-size: 11px; }
+.iec-chain-chart { margin-top: 14px; padding: 12px; border-top: 1px solid #d9e0e6; }
+.iec-level-footer { margin-top: 13px; }
+.iec-level-footer span { color: var(--text-muted); font-size: 11px; }
+.iec-summary-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.iec-summary-card { padding: 13px; border: 1px solid #c7d1da; border-left: 4px solid #9aa9b7; background: #f7f9fa; }
+.iec-summary-card.pass { border-left-color: var(--success); }
+.iec-summary-card.fail, .iec-summary-card.invalid { border-left-color: var(--danger); }
+.iec-summary-card.pending { border-left-color: var(--warning); }
+.iec-summary-card span, .iec-summary-card strong, .iec-summary-card small, .iec-summary-card em { display: block; }
+.iec-summary-card span { color: var(--text-muted); font-size: 11px; }
+.iec-summary-card strong { margin: 2px 0 4px; font-size: 18px; }
+.iec-summary-card small { color: #344b60; }
+.iec-summary-card em { margin-top: 6px; color: var(--text-muted); font-size: 10px; font-style: normal; }
+.iec-print-root { display: none; }
+
+@media (max-width: 1100px) {
+  .iec-editor-top { grid-template-columns: repeat(2, minmax(145px, 1fr)); }
+  .iec-chain-labels, .iec-chain-row { grid-template-columns: 1fr 1fr 1fr; }
+  .iec-chain-labels { display: none; }
+  .iec-chain-row .row-del { justify-self: start; }
+}
+
+@media (max-width: 720px) {
+  .iec-head-row, .iec-level-title, .iec-level-footer, .iec-chain-head { align-items: stretch; flex-direction: column; }
+  .iec-report-actions { justify-content: flex-start; }
+  .iec-editor-top, .iec-summary-grid { grid-template-columns: 1fr; }
+  .iec-chain-row { grid-template-columns: 1fr 1fr; }
+}
+
+@media print {
+  body.iec-printing .app { display: none !important; }
+  body.iec-printing .iec-print-root { display: block !important; }
+  body.iec-printing { background: #fff; }
+}

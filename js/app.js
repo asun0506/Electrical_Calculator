@@ -54,7 +54,12 @@
       if (!calc || typeof calc.id !== 'string' || !calc.id.trim() || typeof calc.render !== 'function') {
         throw new Error('计算器注册信息不完整（需要 id 与 render）');
       }
-      if (registry.some((item) => item.id === calc.id)) {
+      const existingIndex = registry.findIndex((item) => item.id === calc.id);
+      if (existingIndex >= 0) {
+        if (calc.replace === true) {
+          registry[existingIndex] = calc;
+          return calc;
+        }
         throw new Error(`计算器 id 重复：${calc.id}`);
       }
       registry.push(calc);

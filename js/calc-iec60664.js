@@ -114,6 +114,38 @@
     return table[table.length - 1][1];
   }
 
+  // 供系统级三级校核模块复用同一套标准数据与查表逻辑。
+  window.IEC60664Core = Object.freeze({
+    calculate(input) {
+      const U = E.parseNum(input.voltage);
+      const alt = E.parseNum(input.altitude);
+      const pd = String(input.pollution || '2');
+      const mg = input.material || 'IIIa';
+      if (U == null || U <= 0 || alt == null || alt < 0 || !['1', '2', '3'].includes(pd) || !MATGRP_LABEL[mg]) {
+        return { valid: false, error: '请填写有效的工作电压、海拔、污染等级和材料组别。' };
+      }
+      if (U > 3200) return { valid: false, error: '工作电压超过当前表 F.5 数据范围（3200 V），需按适用标准人工确认。' };
+      const impulseV = Math.ceil((2 * U + 1000) * 1.414);
+      const impulseKV = impulseV / 1000;
+      const gapRow = lookupRow(GAP_A, impulseKV);
+      const gapBase = gapRow.val['PD' + pd];
+      const altitudeFactor = lookupGe(ALT, Math.max(alt, 2000));
+      const clearance = gapBase * altitudeFactor;
+      const creepRow = lookupRow(CREEP, U);
+      const creepage = pd === '1'
+        ? creepRow.val.PD1
+        : creepRow.val['PD' + pd][MG_COL['PD' + pd][mg]];
+      return {
+        valid: true, voltage: U, altitude: alt, pollution: pd, material: mg,
+        impulseV, impulseKV, gapLevel: gapRow.level, gapBase, altitudeFactor,
+        clearance, creepLevel: creepRow.level, creepage,
+        pollutionLabel: '污染等级 ' + pd,
+        materialLabel: MATGRP_LABEL[mg],
+      };
+    },
+    materialLabels: MATGRP_LABEL,
+  });
+
   T.register({
     id: 'iec60664',
     title: '电气间隙/爬电距离',
