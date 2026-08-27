@@ -30,54 +30,58 @@ NS = {"w": W_NS}
 YELLOW = {"yellow", "darkyellow", "ffff00", "fff2cc", "ffff99", "ffeb9c"}
 
 
+def table_config(title, chapter, heading, data_start, headers=None):
+    return {"title": title, "chapter": chapter, "heading": heading, "dataStart": data_start, "headers": headers}
+
+
+# The public template deliberately uses different visual table patterns.  The
+# calculator normalises every input table into the same editable, repeatable UI
+# while retaining the original title/header rows in the generated DOCX.
 TABLE_CONFIG = {
-    0: ("fixed", "文档封面与基本信息", None, None),
-    3: ("repeatable", "版本与变更记录", 0, 1),
-    4: ("repeatable", "零件清单", 0, 1),
-    5: ("fixed", "合作伙伴类型", 0, None),
-    6: ("repeatable", "客供件清单", 1, 2),
-    8: ("fixed", "项目代号", None, None),
-    9: ("repeatable", "项目节点计划", 0, 1),
-    10: ("repeatable", "样件需求", 0, 1),
-    11: ("repeatable", "法规与认证要求", 0, 1),
-    12: ("repeatable", "其他法规要求", 0, 1),
-    13: ("repeatable", "推荐法规要求", 0, 1),
-    14: ("fixed", "零件综述", 0, None),
-    15: ("repeatable", "合作伙伴能力需求", 1, 2),
-    16: ("repeatable", "合作伙伴开发责任", 1, 2),
-    17: ("repeatable", "技术评审前交付物", 1, 2),
-    18: ("repeatable", "装车交样前交付物", 1, 2),
-    19: ("repeatable", "项目交付物与时间计划", 0, 1),
-    22: ("fixed", "安装位置与图示", 0, None),
-    23: ("fixed", "目标几何尺寸和重量", 0, None),
-    24: ("fixed", "工作温湿度范围", 0, None),
-    25: ("fixed", "储存温湿度范围", 0, None),
-    26: ("fixed", "工作目标海拔", None, None),
-    27: ("fixed", "目标设计寿命", None, None),
-    28: ("repeatable", "机械接口零件清单", 0, 1),
-    29: ("fixed", "机械接口图解", 0, None),
-    30: ("fixed", "电气接口图解", 0, None),
-    31: ("repeatable", "引脚分配及端子定义", 0, 1),
-    32: ("repeatable", "连接器型号", 0, 1),
-    33: ("fixed", "产品功能与性能需求", 0, None),
-    34: ("fixed", "系统结构与硬件需求", 0, None),
-    35: ("repeatable", "包装与运输要求", 0, 1),
-    36: ("repeatable", "技术规范清单", 0, 1),
-    37: ("repeatable", "可靠性测试项目", 0, 1),
+    0: table_config("文档封面与基本信息", "封面", None, 0, ["项目", "内容"]),
+    3: table_config("版本与变更记录", "封面", 0, 1),
+    4: table_config("零件清单", "1.1", 0, 1),
+    5: table_config("合作伙伴类型", "1.2", None, 1, ["选择", "合作伙伴类型"]),
+    6: table_config("客供件清单", "1.2", 1, 2),
+    8: table_config("项目代号", "3.1", None, 0, ["项目", "内容"]),
+    9: table_config("项目节点计划", "3.2", 0, 1),
+    10: table_config("样件需求", "3.3", 0, 1),
+    11: table_config("法规与认证要求", "4.0", 0, 1),
+    12: table_config("补充法规要求", "4.0", 0, 1),
+    13: table_config("推荐法规要求", "4.0", 0, 1),
+    14: table_config("零件综述", "5.1", None, 1, ["项目", "内容"]),
+    15: table_config("合作伙伴能力需求", "5.2", 1, 2),
+    16: table_config("合作伙伴开发责任", "5.2", 1, 2),
+    17: table_config("技术评审前交付物", "5.2", 1, 2),
+    18: table_config("装车交样前交付物", "5.2", 1, 2),
+    19: table_config("项目交付物与时间计划", "5.3", 0, 1),
+    22: table_config("安装位置与图示", "5.10.1", 0, 1),
+    23: table_config("目标几何尺寸和重量", "5.10.2", None, 1, ["项目", "内容"]),
+    24: table_config("工作温湿度范围", "5.10.3", None, 1, ["项目", "内容"]),
+    25: table_config("储存温湿度范围", "5.10.4", None, 1, ["项目", "内容"]),
+    26: table_config("工作目标海拔", "5.10.5", None, 0, ["项目", "内容"]),
+    27: table_config("目标设计寿命", "5.10.6", None, 0, ["项目", "内容"]),
+    28: table_config("机械接口零件清单", "5.11.1", 0, 1),
+    29: table_config("机械接口图解", "5.11.1", None, 1, ["图片 / 说明"]),
+    30: table_config("电气接口图解", "5.11.2.1", None, 1, ["图片 / 说明"]),
+    31: table_config("引脚分配及端子定义", "5.11.2.2.1", 0, 1),
+    32: table_config("连接器型号", "5.11.2.2.2", 0, 1),
+    33: table_config("产品功能与性能需求", "5.12", None, 1, ["需求项目", "要求"]),
+    34: table_config("产品功能与性能参数", "5.12", None, 0, ["需求项目", "要求"]),
+    35: table_config("系统结构与硬件需求", "5.13", None, 1, ["需求项目", "要求"]),
+    36: table_config("包装与运输要求", "5.15.3", 0, 1),
+    37: table_config("技术规范清单", "6.2", 0, 1),
+    38: table_config("DV/PV 测试计划", "8.2.2", 0, 1),
 }
 
-# In label/value forms the first column is explanatory context even where the
-# template highlights the whole row. Only the value column belongs in the form.
-FIXED_EDITABLE_COLS = {
-    8: {1},
-    14: {1},
-    23: {1},
-    24: {1},
-    25: {1},
-    26: {1},
-    27: {1},
-    33: {1},
-    34: {1},
+CHAPTER_TITLES = {
+    "封面": "文档封面与基本信息",
+    "1": "Engineering Summary 工程概述",
+    "3": "Project Information 项目信息",
+    "4": "Legal Requirements 法规要求",
+    "5": "Product Requirements 产品要求",
+    "6": "Design Requirement 设计要求",
+    "8": "Validation 认证",
 }
 
 
@@ -140,24 +144,26 @@ def cell_rows(table: etree._Element) -> list[list[etree._Element]]:
     return [row.xpath("./w:tc", namespaces=NS) for row in table.xpath("./w:tr", namespaces=NS)]
 
 
-def nearest_context(body_items: list[dict], body_index: int) -> str:
-    candidates = []
-    for item in body_items:
-        if item["bodyIndex"] >= body_index or item["kind"] != "p" or not item["text"]:
-            continue
-        text = re.sub(r"\s+", " ", item["text"]).strip()
-        numbered = item["numbered"] or bool(re.match(r"^(?:\d+(?:\.\d+)*|[一二三四五六七八九十]+[、.])\s*", text))
-        if numbered and len(text) <= 150:
-            candidates.append(text)
-    return candidates[-1] if candidates else "文档封面与基本信息"
-
-
 def headers_for(row: list[etree._Element]) -> list[str]:
     headers = []
     for index, cell in enumerate(row):
         value = re.sub(r"\s+", " ", text_of(cell)).strip()
         headers.append(value or f"第{index + 1}列")
     return headers
+
+
+def chapter_key(value: str) -> tuple[int, ...]:
+    if value == "封面":
+        return (0,)
+    return tuple(int(part) for part in value.split("."))
+
+
+def major_chapter(value: str) -> str:
+    return "封面" if value == "封面" else value.split(".")[0]
+
+
+def chapter_label(chapter: str, title: str) -> str:
+    return title if chapter == "封面" else f"{chapter} {title}"
 
 
 def main(source: Path) -> None:
@@ -183,108 +189,139 @@ def main(source: Path) -> None:
 
     fields = []
     tables = []
-    sections: OrderedDict[str, dict] = OrderedDict()
+    ordered_items = []
+    configured_tables = {item["index"]: item for item in body_items if item["kind"] == "table" and item["index"] in TABLE_CONFIG}
 
-    def section_for(context: str) -> dict:
-        title = "文档封面与基本信息" if context == "文档封面与基本信息" else context
-        if title not in sections:
-            sections[title] = {
-                "id": f"section_{len(sections) + 1}",
-                "title": title,
-                "description": f"结合“{title}”上下文填写；可一键恢复模板默认内容。",
-                "fieldIds": [],
-                "tableIds": [],
-            }
-        return sections[title]
-
-    # Standalone yellow paragraphs remain ordinary fields; blank highlighted spacers are ignored.
+    # Create a context timeline from configured tables and headings that include
+    # their chapter number as ordinary text (common in the validation chapter).
+    context_events = []
+    for table_index_value, item in configured_tables.items():
+        config = TABLE_CONFIG[table_index_value]
+        context_events.append((item["bodyIndex"], config["chapter"], config["title"]))
     for item in body_items:
+        if item["kind"] != "p":
+            continue
+        match = re.match(r"^\s*(\d+(?:\.\d+)+)\s*", item["text"])
+        if match and "TOC" not in (item["node"].xpath("string(./w:pPr/w:pStyle/@w:val)", namespaces=NS) or ""):
+            context_events.append((item["bodyIndex"], match.group(1), item["text"]))
+    context_events.sort(key=lambda entry: entry[0])
+
+    def context_before(body_index: int) -> tuple[str, str]:
+        available = [entry for entry in context_events if entry[0] < body_index]
+        if not available:
+            return "封面", CHAPTER_TITLES["封面"]
+        _, chapter, title = available[-1]
+        return chapter, title
+
+    # Standalone yellow narrative paragraphs remain fields.  Yellow chapter
+    # labels/titles are not fields; the table below them is the editable item.
+    for position, item in enumerate(body_items):
         if item["kind"] != "p" or not item["text"] or not is_yellow(item["node"]):
             continue
+        if item["bodyIndex"] >= 100:
+            following = next((candidate for candidate in body_items[position + 1:] if candidate["text"] or candidate["kind"] == "table"), None)
+            if item["numbered"] or (following and following["kind"] == "table" and len(item["text"]) < 50):
+                continue
+        chapter, context = ("封面", CHAPTER_TITLES["封面"]) if item["bodyIndex"] < 100 else context_before(item["bodyIndex"])
         field_id = f"f{len(fields) + 1:03d}"
         token = f"{{{{SOR_{field_id.upper()}}}}}"
         if not replace_yellow_runs(item["node"], token):
             continue
-        context = nearest_context(body_items, item["bodyIndex"])
-        # Cover placeholders occur before the first numbered body chapter.
-        if item["bodyIndex"] < 100:
-            context = "文档封面与基本信息"
         default = item["text"]
         field = {
             "id": field_id,
             "token": token,
             "label": compact_label(default, f"正文填写项 {len(fields) + 1}"),
             "default": default,
+            "chapterNumber": chapter,
+            "chapterTitle": context,
             "context": context,
-            "hint": f"模板原文位于“{context}”；请按上下文替换，或保留默认内容。",
+            "hint": f"位于第 {chapter} 章“{context}”；请联系前后文替换，或保留模板默认内容。" if chapter != "封面" else "位于文档封面；请按当前项目替换。",
             "type": "textarea" if len(default) > 55 or "\n" in default else "text",
             "source": f"word/document.xml/p{item['index']}",
+            "bodyIndex": item["bodyIndex"],
         }
         fields.append(field)
-        section_for(context)["fieldIds"].append(field_id)
+        ordered_items.append({"type": "field", "id": field_id, "chapter": chapter, "bodyIndex": item["bodyIndex"]})
 
-    # Table input regions are presented as tables in the calculator.
+    # Every configured input table is repeatable, including label/value tables.
     for item in body_items:
         if item["kind"] != "table" or item["index"] not in TABLE_CONFIG:
             continue
-        mode, title, header_row, data_start = TABLE_CONFIG[item["index"]]
+        config = TABLE_CONFIG[item["index"]]
         rows = cell_rows(item["node"])
         table_id = f"t{item['index']:02d}"
-        context = "文档封面与基本信息" if item["index"] in {0, 3} else nearest_context(body_items, item["bodyIndex"])
+        header_row = config["heading"]
+        data_start = config["dataStart"]
+        if data_start >= len(rows):
+            raise ValueError(f"Table {item['index']} has no data row at index {data_start}")
+        headers = config["headers"] or headers_for(rows[header_row])
         table = {
             "id": table_id,
-            "mode": mode,
-            "title": title,
-            "context": context,
-            "hint": "表格按原模板结构填写。" if mode == "fixed" else "按表头逐列填写，可根据项目需要添加或删除行。",
+            "mode": "repeatable",
+            "title": config["title"],
+            "chapterNumber": config["chapter"],
+            "chapterTitle": config["title"],
+            "context": chapter_label(config["chapter"], config["title"]),
+            "hint": f"第 {config['chapter']} 章：{config['title']}。按表头逐列填写，可根据项目需要添加或删除行。" if config["chapter"] != "封面" else "文档封面与版本信息；可添加或删除行。",
             "source": f"word/document.xml/tbl{item['index']}",
+            "headers": headers,
+            "rowTokens": [],
+            "defaults": [],
+            "imageCells": [],
+            "imageColumns": [],
+            "bodyIndex": item["bodyIndex"],
         }
-        if mode == "repeatable":
-            assert header_row is not None and data_start is not None
-            table["headers"] = headers_for(rows[header_row])
-            table["rowTokens"] = []
-            table["defaults"] = []
-            for row_index in range(data_start, len(rows)):
-                row = rows[row_index]
-                tokens = []
-                defaults = []
-                for col_index, cell in enumerate(row):
-                    token = f"{{{{SOR_{table_id.upper()}_R{row_index - data_start}_C{col_index}}}}}"
-                    defaults.append(text_of(cell))
-                    replace_node_text(cell, token)
-                    tokens.append(token)
-                table["rowTokens"].append(tokens)
-                table["defaults"].append(defaults)
-            table["tokens"] = table["rowTokens"][0] if table["rowTokens"] else []
-            if not table["defaults"]:
-                table["defaults"] = [[""] * len(table["headers"])]
-        else:
-            grid = []
-            tokens_grid = []
+        image_columns = set()
+        image_cells = []
+        for row_index in range(data_start, len(rows)):
+            row = rows[row_index]
+            tokens = []
             defaults = []
-            for row_index, row in enumerate(rows):
-                grid_row = []
-                token_row = []
-                default_row = []
-                for col_index, cell in enumerate(row):
-                    default = text_of(cell)
-                    allowed_cols = FIXED_EDITABLE_COLS.get(item["index"])
-                    editable = is_yellow(cell) and row_index != header_row and (allowed_cols is None or col_index in allowed_cols)
-                    token = None
-                    if editable:
-                        token = f"{{{{SOR_{table_id.upper()}_R{row_index}_C{col_index}}}}}"
-                        replace_node_text(cell, token)
-                    grid_row.append({"text": default, "editable": editable})
-                    token_row.append(token)
-                    default_row.append(default if editable else "")
-                grid.append(grid_row)
-                tokens_grid.append(token_row)
-                defaults.append(default_row)
-            table["grid"] = grid
-            table["tokensGrid"] = tokens_grid
-            table["defaults"] = defaults
+            for col_index, cell in enumerate(row):
+                token = f"{{{{SOR_{table_id.upper()}_R{row_index - data_start}_C{col_index}}}}}"
+                default = text_of(cell)
+                defaults.append(default)
+                if "附图" in default:
+                    image_columns.add(col_index)
+                    image_cells.append([row_index - data_start, col_index])
+                replace_node_text(cell, token)
+                tokens.append(token)
+            table["rowTokens"].append(tokens)
+            table["defaults"].append(defaults)
+        table["tokens"] = table["rowTokens"][0] if table["rowTokens"] else []
+        table["imageCells"] = image_cells
+        image_rows = {row for row, _ in image_cells}
+        table["imageColumns"] = sorted(image_columns) if image_rows and len(image_rows) == len(table["defaults"]) else []
+        if not table["defaults"]:
+            table["defaults"] = [[""] * len(headers)]
         tables.append(table)
-        section_for(context)["tableIds"].append(table_id)
+        ordered_items.append({"type": "table", "id": table_id, "chapter": config["chapter"], "bodyIndex": item["bodyIndex"]})
+
+    field_by_id = {field["id"]: field for field in fields}
+    table_by_id = {table["id"]: table for table in tables}
+    sections: OrderedDict[str, dict] = OrderedDict()
+    for item in sorted(ordered_items, key=lambda entry: (chapter_key(entry["chapter"]), entry["bodyIndex"])):
+        major = major_chapter(item["chapter"])
+        if major not in sections:
+            title = CHAPTER_TITLES.get(major, f"第 {major} 章")
+            sections[major] = {
+                "id": f"section_{major.replace('.', '_')}",
+                "chapterNumber": major,
+                "title": title if major == "封面" else f"第 {major} 章 · {title}",
+                "description": "按文档顺序填写本章表格和文字内容；可一键恢复模板默认内容。",
+                "fieldIds": [],
+                "tableIds": [],
+                "items": [],
+            }
+        section = sections[major]
+        section["items"].append({"type": item["type"], "id": item["id"]})
+        if item["type"] == "field":
+            section["fieldIds"].append(item["id"])
+            field_by_id[item["id"]]["sectionId"] = section["id"]
+        else:
+            section["tableIds"].append(item["id"])
+            table_by_id[item["id"]]["sectionId"] = section["id"]
 
     members["word/document.xml"] = etree.tostring(root, xml_declaration=True, encoding="UTF-8", standalone="yes")
 
@@ -295,6 +332,11 @@ def main(source: Path) -> None:
         changed = False
         for paragraph in header.xpath(".//w:p", namespaces=NS):
             if is_yellow(paragraph) and replace_yellow_runs(paragraph, "{{SOR_AUTO_HEADER}}"):
+                token_seen = False
+                for text_node in paragraph.xpath(".//w:t", namespaces=NS):
+                    token_seen = token_seen or text_node.text == "{{SOR_AUTO_HEADER}}"
+                    if token_seen and text_node.text and re.fullmatch(r"\s*\d+(?:\.\d+)+\s*", text_node.text):
+                        text_node.text = ""
                 changed = True
         if changed:
             members[name] = etree.tostring(header, xml_declaration=True, encoding="UTF-8", standalone="yes")
@@ -324,12 +366,12 @@ def main(source: Path) -> None:
         "可靠性测试、工装检具、包装运输及售后服务要求是否适用于本零件",
     ]
     schema = {
-        "version": 2,
+        "version": 3,
         "templateName": source.name,
         "sourceSha256": source_hash,
         "pageSize": "A4 portrait",
-        "pageCount": 42,
-        "previewPageCount": 41,
+        "pageCount": 57,
+        "previewPageCount": 57,
         "publicTemplate": True,
         "sections": list(sections.values()),
         "fields": fields,

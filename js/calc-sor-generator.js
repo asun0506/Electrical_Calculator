@@ -27,7 +27,7 @@
     schema.fields.forEach((field) => { fields[field.id] = field.default; });
     schema.tables.forEach((table) => { tables[table.id] = clone(table.defaults); });
     return {
-      formatVersion: 2,
+      formatVersion: 3,
       templateSha256: schema.sourceSha256,
       meta: {
         fileName: '项目_SOR',
@@ -35,6 +35,7 @@
       },
       fields,
       tables,
+      cellImages: {},
       attachments: [],
     };
   }
@@ -64,55 +65,68 @@
     section.tableIds.forEach((id) => {
       const table = tableById[id];
       const rows = state.tables[id] || [];
-      const hasValue = rows.some((row, ri) => row.some((cell, ci) => {
-        if (table.mode === 'fixed' && !table.grid?.[ri]?.[ci]?.editable) return false;
-        return String(cell || '').trim();
-      }));
+      const hasValue = rows.some((row) => row.some((cell) => String(cell || '').trim()))
+        || Object.keys(state.cellImages || {}).some((key) => key.startsWith(`${table.id}:`));
       if (hasValue) complete += 1;
     });
     return { total, complete };
   }
 
-  function tableEditor(table) {
-    const rows = state.tables[table.id] || [];
-    if (table.mode === 'fixed') {
-      return `<div class="sor-table-block sor-fixed-table" data-sor-table="${esc(table.id)}">
-        <div class="sor-table-heading"><div><strong>${esc(table.title)}</strong><p>${esc(table.hint)}</p></div></div>
-        <div class="sor-table-scroll"><table class="sor-editor-table"><tbody>${table.grid.map((gridRow, ri) => `<tr>${gridRow.map((cell, ci) => cell.editable
-          ? `<td class="sor-editable-cell"><textarea rows="2" data-table-id="${esc(table.id)}" data-row="${ri}" data-col="${ci}" aria-label="${esc(cell.text || `${table.title} 第${ri + 1}行第${ci + 1}列`)}">${esc(rows[ri]?.[ci] || '')}</textarea></td>`
-          : `<th scope="row">${esc(cell.text)}</th>`).join('')}</tr>`).join('')}</tbody></table></div>
-      </div>`;
-    }
-    return `<div class="sor-table-block sor-repeatable-table" data-sor-table="${esc(table.id)}">
-      <div class="sor-table-heading">
-        <div><strong>${esc(table.title)}</strong><p>${esc(table.hint)}</p></div>
-        <button type="button" class="btn sor-add-row" data-table-id="${esc(table.id)}">添加一行</button>
-      </div>
-      <div class="sor-table-scroll"><table class="sor-editor-table"><thead><tr>${table.headers.map((header) => `<th>${esc(header)}</th>`).join('')}<th class="sor-action-col">操作</th></tr></thead>
-      <tbody>${rows.map((row, ri) => `<tr>${table.headers.map((header, ci) => `<td><textarea rows="2" data-table-id="${esc(table.id)}" data-row="${ri}" data-col="${ci}" aria-label="${esc(header)}">${esc(row[ci] || '')}</textarea></td>`).join('')}<td><button type="button" class="sor-delete-row" data-table-id="${esc(table.id)}" data-row="${ri}" title="删除本行">×</button></td></tr>`).join('')}</tbody></table></div>
+  function cellImageKey(tableId, row, col) {
+    return `${tableId}:${row}:${col}`;
+  }
+
+  function cellEditor(table, row, col, header, value) {
+    const key = cellImageKey(table.id, row, col);
+    const image = state.cellImages?.[key];
+    const textarea = `<textarea rows="2" data-table-id="${esc(table.id)}" data-row="${row}" data-col="${col}" aria-label="${esc(header)}">${esc(value || '')}</textarea>`;
+    const imageEnabled = (table.imageColumns || []).includes(col)
+      || (table.imageCells || []).some((cell) => cell[0] === row && cell[1] === col);
+    if (!imageEnabled) return textarea;
+    return `<div class="sor-image-cell">${textarea}
+      <div class="sor-image-control">${image ? `<img src="${esc(image.dataUrl)}" alt="${esc(image.name)}"><span>${esc(image.name)}</span><button type="button" data-remove-cell-image="${esc(key)}">移除图片</button>` : `<label class="btn sor-file-btn">插入图片<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" data-cell-image="${esc(key)}"></label><small>图片将插入 Word/PDF 中的此处</small>`}</div>
     </div>`;
   }
 
-  function render() {
-    const activeOpen = hostRef.querySelector('details[open]')?.dataset.sectionId;
+  function tableEditor(table) {
+    const rows = state.tables[table.id] || [];
+    return `<div class="sor-table-block sor-repeatable-table" data-sor-table="${esc(table.id)}">
+      <div class="sor-table-heading">
+        <div><span class="sor-chapter-badge">${table.chapterNumber === '封面' ? '封面' : `章节 ${esc(table.chapterNumber)}`}</span><strong>${esc(table.title)}</strong><p>${esc(table.hint)}</p></div>
+        <button type="button" class="btn sor-add-row" data-table-id="${esc(table.id)}">添加一行</button>
+      </div>
+      <div class="sor-table-scroll"><table class="sor-editor-table"><thead><tr>${table.headers.map((header) => `<th>${esc(header)}</th>`).join('')}<th class="sor-action-col">操作</th></tr></thead>
+      <tbody>${rows.map((row, ri) => `<tr>${table.headers.map((header, ci) => `<td>${cellEditor(table, ri, ci, header, row[ci])}</td>`).join('')}<td><button type="button" class="sor-delete-row" data-table-id="${esc(table.id)}" data-row="${ri}" title="删除本行">×</button></td></tr>`).join('')}</tbody></table></div>
+    </div>`;
+  }
+
+  function captureOpenSections() {
+    return new Set(Array.from(hostRef?.querySelectorAll('details[open]') || []).map((item) => item.dataset.sectionId));
+  }
+
+  function render(openSectionIds) {
+    const openIds = openSectionIds || captureOpenSections();
     const sectionsHtml = uiSections.map((section, index) => {
       const progress = sectionProgress(section);
-      const fields = section.fieldIds.map((id) => fieldById[id]).filter(Boolean);
-      const tables = section.tableIds.map((id) => tableById[id]).filter(Boolean);
-      if (!fields.length && !tables.length) return '';
-      return `<details class="sor-section" data-section-id="${esc(section.id)}" ${index === 0 || activeOpen === section.id ? 'open' : ''}>
+      const items = (section.items || [
+        ...section.fieldIds.map((id) => ({ type: 'field', id })),
+        ...section.tableIds.map((id) => ({ type: 'table', id })),
+      ]).map((item) => item.type === 'field' ? fieldById[item.id] : tableById[item.id]).filter(Boolean);
+      if (!items.length) return '';
+      return `<details class="sor-section" data-section-id="${esc(section.id)}" ${(openIds.has(section.id) || (index === 0 && !openIds.size)) ? 'open' : ''}>
         <summary><span><b>${esc(section.title)}</b><small>${esc(section.description)}</small></span><em>${progress.complete}/${progress.total}</em></summary>
         <div class="sor-section-body">
           <div class="sor-section-tools"><button type="button" class="btn sor-fill-section" data-section-id="${esc(section.id)}">本章一键填充模板默认信息</button></div>
-          ${fields.map((field) => `<label class="sor-field"><span>${esc(field.label)}</span>${fieldControl(field)}<small>${esc(field.hint)}</small></label>`).join('')}
-          ${tables.map(tableEditor).join('')}
+          ${items.map((item) => item.token
+            ? `<label class="sor-field"><span><em class="sor-chapter-badge">${item.chapterNumber === '封面' ? '封面' : `章节 ${esc(item.chapterNumber)}`}</em>${esc(item.label)}</span>${fieldControl(item)}<small>${esc(item.hint)}</small></label>`
+            : tableEditor(item)).join('')}
         </div>
       </details>`;
     }).join('');
 
     hostRef.innerHTML = `<style>${moduleStyle()}</style>
       <section class="panel sor-hero">
-        <div><p class="sor-kicker">公开版 SOR Template · A4 原版生成</p><h3>SOR 项目文件生成器</h3><p>新版填写区按原模板表格组织：固定信息直接填写，可扩展清单可自由增减行；目录无需输入。</p></div>
+        <div><p class="sor-kicker">公开版 SOR Template · A4 原版生成</p><h3>SOR 项目文件生成器</h3><p>填写项按大章节归类并依章节号排列；所有表格均可增减行，目录无需输入。</p></div>
         <div class="sor-actions">
           <button type="button" class="btn" id="sorExportJson">导出 JSON</button>
           <label class="btn sor-file-btn">导入 JSON<input id="sorImportJson" type="file" accept="application/json,.json"></label>
@@ -158,14 +172,27 @@
     hostRef.querySelector('#sorFileName').addEventListener('input', (event) => { state.meta.fileName = event.target.value; });
     hostRef.querySelectorAll('.sor-add-row').forEach((button) => button.addEventListener('click', () => {
       const table = tableById[button.dataset.tableId];
+      const openIds = captureOpenSections();
+      openIds.add(table.sectionId);
       state.tables[table.id].push(table.headers.map(() => ''));
-      render();
+      render(openIds);
     }));
     hostRef.querySelectorAll('.sor-delete-row').forEach((button) => button.addEventListener('click', () => {
-      const rows = state.tables[button.dataset.tableId];
-      rows.splice(Number(button.dataset.row), 1);
-      if (!rows.length) rows.push(tableById[button.dataset.tableId].headers.map(() => ''));
-      render();
+      const tableId = button.dataset.tableId;
+      const rowIndex = Number(button.dataset.row);
+      const rows = state.tables[tableId];
+      const openIds = captureOpenSections();
+      openIds.add(tableById[tableId].sectionId);
+      rows.splice(rowIndex, 1);
+      shiftCellImagesAfterDelete(tableId, rowIndex);
+      if (!rows.length) rows.push(tableById[tableId].headers.map(() => ''));
+      render(openIds);
+    }));
+    hostRef.querySelectorAll('[data-cell-image]').forEach((input) => input.addEventListener('change', importCellImage));
+    hostRef.querySelectorAll('[data-remove-cell-image]').forEach((button) => button.addEventListener('click', () => {
+      const openIds = captureOpenSections();
+      delete state.cellImages[button.dataset.removeCellImage];
+      render(openIds);
     }));
     hostRef.querySelectorAll('.sor-fill-section').forEach((button) => button.addEventListener('click', () => fillSection(button.dataset.sectionId)));
     hostRef.querySelectorAll('[data-remove-attachment]').forEach((button) => button.addEventListener('click', () => { state.attachments.splice(Number(button.dataset.removeAttachment), 1); render(); }));
@@ -183,7 +210,10 @@
     if (!section) return;
     section.fieldIds.forEach((id) => { state.fields[id] = fieldById[id].default; });
     section.tableIds.forEach((id) => { state.tables[id] = clone(tableById[id].defaults); });
-    render();
+    Object.keys(state.cellImages || {}).forEach((key) => {
+      if (section.tableIds.some((id) => key.startsWith(`${id}:`))) delete state.cellImages[key];
+    });
+    render(new Set([sectionId]));
   }
 
   function clearAll() {
@@ -192,10 +222,9 @@
     Object.keys(state.fields).forEach((id) => { state.fields[id] = ''; });
     Object.keys(state.tables).forEach((id) => {
       const table = tableById[id];
-      state.tables[id] = table.mode === 'fixed'
-        ? table.defaults.map((row) => row.map(() => ''))
-        : [table.headers.map(() => '')];
+      state.tables[id] = [table.headers.map(() => '')];
     });
+    state.cellImages = {};
     state.attachments = [];
     state.meta.fileName = '新建_SOR';
     render();
@@ -214,6 +243,52 @@
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
+  }
+
+  function readImageSize(dataUrl) {
+    return new Promise((resolve) => {
+      const image = new Image();
+      image.onload = () => resolve({ width: image.naturalWidth || 800, height: image.naturalHeight || 450 });
+      image.onerror = () => resolve({ width: 800, height: 450 });
+      image.src = dataUrl;
+    });
+  }
+
+  async function importCellImage(event) {
+    const file = event.target.files && event.target.files[0];
+    if (!file) return;
+    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+      window.alert('表格内图片请使用 PNG 或 JPG 格式。');
+      event.target.value = '';
+      return;
+    }
+    const openIds = captureOpenSections();
+    const dataUrl = await readFileDataUrl(file);
+    const size = await readImageSize(dataUrl);
+    state.cellImages[event.target.dataset.cellImage] = {
+      name: file.name,
+      type: file.type,
+      size: file.size,
+      dataUrl,
+      width: size.width,
+      height: size.height,
+    };
+    render(openIds);
+  }
+
+  function shiftCellImagesAfterDelete(tableId, deletedRow) {
+    const next = {};
+    Object.entries(state.cellImages || {}).forEach(([key, value]) => {
+      const [keyTable, rowText, colText] = key.split(':');
+      if (keyTable !== tableId) {
+        next[key] = value;
+        return;
+      }
+      const row = Number(rowText);
+      if (row < deletedRow) next[key] = value;
+      else if (row > deletedRow) next[cellImageKey(tableId, row - 1, Number(colText))] = value;
+    });
+    state.cellImages = next;
   }
 
   async function importAttachments(event) {
@@ -251,6 +326,7 @@
       next.meta = { ...next.meta, ...(data.meta || {}) };
       Object.keys(next.fields).forEach((id) => { if (Object.prototype.hasOwnProperty.call(data.fields, id)) next.fields[id] = data.fields[id]; });
       Object.keys(next.tables).forEach((id) => { if (Array.isArray(data.tables[id])) next.tables[id] = data.tables[id]; });
+      next.cellImages = data.cellImages && typeof data.cellImages === 'object' ? data.cellImages : {};
       next.attachments = Array.isArray(data.attachments) ? data.attachments : [];
       state = next;
       render();
@@ -297,7 +373,10 @@
         const source = templateRows[sourceIndex];
         let row = source.xml;
         source.tokens.forEach((token, ci) => {
-          if (token) row = replaceAll(row, token, xmlText(values[ci] == null ? '' : values[ci]));
+          if (!token) return;
+          const image = state.cellImages?.[cellImageKey(table.id, rowIndex, ci)];
+          const replacement = image ? `__SOR_CELL_IMAGE_${table.id}_${rowIndex}_${ci}__` : xmlText(values[ci] == null ? '' : values[ci]);
+          row = replaceAll(row, token, replacement);
         });
         if (rowIndex >= templateRows.length) {
           generatedRowIndex += 1;
@@ -317,16 +396,6 @@
     return xml;
   }
 
-  function fillFixedTables(xml) {
-    schema.tables.filter((table) => table.mode === 'fixed').forEach((table) => {
-      const values = state.tables[table.id] || [];
-      table.tokensGrid.forEach((tokenRow, ri) => tokenRow.forEach((token, ci) => {
-        if (token) xml = replaceAll(xml, token, xmlText(values[ri]?.[ci] == null ? '' : values[ri][ci]));
-      }));
-    });
-    return xml;
-  }
-
   function syncedTableValue(target) {
     if (!target) return '';
     return state.tables[target.tableId]?.[target.row]?.[target.col] || '';
@@ -335,6 +404,68 @@
   function dataUrlParts(dataUrl) {
     const match = /^data:([^;,]+)?(?:;base64)?,(.*)$/i.exec(dataUrl || '');
     return match ? { mime: match[1] || 'application/octet-stream', base64: match[2] } : null;
+  }
+
+  function base64Bytes(base64) {
+    const binary = window.atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+    return bytes;
+  }
+
+  function cellImageDrawing(rid, image, drawingId) {
+    const sourceWidth = Number(image.width) || 800;
+    const sourceHeight = Number(image.height) || 450;
+    const maxWidth = 3600000;
+    const maxHeight = 2160000;
+    const naturalWidth = sourceWidth * 9525;
+    const naturalHeight = sourceHeight * 9525;
+    const scale = Math.min(1, maxWidth / naturalWidth, maxHeight / naturalHeight);
+    const width = Math.max(1, Math.round(naturalWidth * scale));
+    const height = Math.max(1, Math.round(naturalHeight * scale));
+    const name = xmlEscape(image.name || `SOR 图片 ${drawingId}`);
+    return `<w:r><w:drawing><wp:inline distT="0" distB="0" distL="0" distR="0"><wp:extent cx="${width}" cy="${height}"/><wp:effectExtent l="0" t="0" r="0" b="0"/><wp:docPr id="${drawingId}" name="${name}"/><wp:cNvGraphicFramePr><a:graphicFrameLocks noChangeAspect="1"/></wp:cNvGraphicFramePr><a:graphic><a:graphicData uri="http://schemas.openxmlformats.org/drawingml/2006/picture"><pic:pic><pic:nvPicPr><pic:cNvPr id="0" name="${name}"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed="${rid}"/><a:stretch><a:fillRect/></a:stretch></pic:blipFill><pic:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="${width}" cy="${height}"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></pic:spPr></pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r>`;
+  }
+
+  async function addCellImages(zip, documentXml) {
+    const entries = Object.entries(state.cellImages || {}).filter(([, image]) => image?.dataUrl);
+    if (!entries.length) return documentXml;
+    const rootDeclaration = documentXml.slice(0, documentXml.indexOf('<w:body>'));
+    if (!/xmlns:a="/.test(rootDeclaration)) {
+      documentXml = documentXml.replace('<w:document ', '<w:document xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" ');
+    }
+    if (!/xmlns:pic="/.test(rootDeclaration)) {
+      documentXml = documentXml.replace('<w:document ', '<w:document xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture" ');
+    }
+    let rels = await zip.file('word/_rels/document.xml.rels').async('string');
+    let types = await zip.file('[Content_Types].xml').async('string');
+    let drawingId = 12000;
+    for (let index = 0; index < entries.length; index += 1) {
+      const [key, image] = entries[index];
+      const [tableId, row, col] = key.split(':');
+      const marker = `__SOR_CELL_IMAGE_${tableId}_${row}_${col}__`;
+      const markerIndex = documentXml.indexOf(marker);
+      if (markerIndex < 0) continue;
+      const parts = dataUrlParts(image.dataUrl);
+      if (!parts || !['image/png', 'image/jpeg'].includes(parts.mime)) continue;
+      const extension = parts.mime === 'image/png' ? 'png' : 'jpeg';
+      const mediaName = `sor-cell-image-${index + 1}.${extension}`;
+      const rid = `rIdSORCellImage${index + 1}`;
+      zip.file(`word/media/${mediaName}`, base64Bytes(parts.base64));
+      rels = rels.replace('</Relationships>', `<Relationship Id="${rid}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/${mediaName}"/></Relationships>`);
+      if (!new RegExp(`<Default[^>]+Extension="${extension}"`, 'i').test(types)) {
+        types = types.replace('</Types>', `<Default Extension="${extension}" ContentType="${parts.mime}"/></Types>`);
+      }
+      const runStarts = Array.from(documentXml.slice(0, markerIndex).matchAll(/<w:r(?:\s[^>]*)?>/g));
+      const runStart = runStarts.length ? runStarts[runStarts.length - 1].index : -1;
+      const runEndTag = documentXml.indexOf('</w:r>', markerIndex);
+      if (runStart < 0 || runEndTag < 0) throw new Error(`无法在文档中定位图片“${image.name}”`);
+      drawingId += 1;
+      documentXml = documentXml.slice(0, runStart) + cellImageDrawing(rid, image, drawingId) + documentXml.slice(runEndTag + 6);
+    }
+    zip.file('word/_rels/document.xml.rels', rels);
+    zip.file('[Content_Types].xml', types);
+    return documentXml;
   }
 
   function attachmentHtml() {
@@ -359,9 +490,9 @@
     const zip = await JSZip.loadAsync(TEMPLATE.base64, { base64: true });
     let documentXml = await zip.file('word/document.xml').async('string');
     documentXml = fillRepeatableTables(documentXml);
-    documentXml = fillFixedTables(documentXml);
     schema.fields.forEach((field) => { documentXml = replaceAll(documentXml, field.token, xmlText(state.fields[field.id])); });
     documentXml = documentXml.replace(/<w:highlight\b[^>]*\/>/g, '');
+    documentXml = await addCellImages(zip, documentXml);
     documentXml = await addAttachmentPart(zip, documentXml);
     zip.file('word/document.xml', documentXml);
 
@@ -427,7 +558,7 @@
 
   function moduleStyle() {
     return `
-      .sor-hero{display:flex;justify-content:space-between;gap:20px;align-items:center;background:linear-gradient(135deg,#f7fafc,#eef4f8);border-left:4px solid #173b5e}.sor-kicker{margin:0;color:#a36600;font-size:11px;letter-spacing:.12em}.sor-hero h3{font-size:24px;margin:4px 0}.sor-hero p{margin:4px 0}.sor-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.sor-file-btn{position:relative;overflow:hidden}.sor-file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}.sor-meta{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:12px;align-items:end}.sor-meta label,.sor-attachment-category label{display:grid;gap:5px}.sor-meta label span,.sor-attachment-category label{font-size:12px;font-weight:700}.sor-template-fact{border:1px solid #c7d2dc;padding:10px 12px;background:#fff;display:grid;gap:2px}.sor-template-fact span,.sor-template-fact small{color:#607181}.sor-guide ul{columns:2;margin-bottom:0}.sor-guide li{break-inside:avoid;margin-bottom:7px}.sor-attachment-head,.sor-table-heading{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.sor-attachment-head h3,.sor-table-heading p{margin:0}.sor-attachment-category{display:grid;grid-template-columns:220px 1fr;gap:12px;margin:12px 0}.sor-attachment-item{display:grid;grid-template-columns:58px 1fr 32px;gap:10px;align-items:center;border-top:1px solid #d8e0e7;padding:8px 0}.sor-attachment-item img{width:56px;height:44px;object-fit:cover}.sor-attachment-item span>b{display:flex;width:56px;height:44px;align-items:center;justify-content:center;background:#e6edf3;font-size:11px}.sor-attachment-item div{display:grid}.sor-attachment-item small{color:#607181}.sor-attachment-item button,.sor-delete-row{border:1px solid #efb6b6;color:#b42318;background:#fff5f5;border-radius:6px;font-size:20px;cursor:pointer}.sor-sections{display:grid;gap:10px}.sor-section{border:1px solid #bdcad5;background:#fff}.sor-section summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:14px 16px;cursor:pointer;background:#f2f6f9}.sor-section summary span{display:grid;gap:3px}.sor-section summary small{font-weight:400;color:#607181}.sor-section summary em{font-style:normal;background:#173b5e;color:#fff;padding:3px 8px;border-radius:999px;font-size:11px}.sor-section-body{padding:14px 16px}.sor-section-tools{text-align:right;margin-bottom:8px}.sor-field{display:grid;grid-template-columns:minmax(160px,22%) 1fr;gap:5px 14px;padding:10px 0;border-top:1px solid #e0e6eb}.sor-field>span{font-weight:700;line-height:1.45}.sor-field>small{grid-column:2;color:#647587}.sor-field textarea{resize:vertical;min-height:70px}.sor-table-block{border-top:2px solid #8fa2b4;margin-top:14px;padding-top:12px}.sor-table-heading p{font-size:12px;color:#607181;margin-top:4px}.sor-table-scroll{overflow:auto;margin-top:8px}.sor-editor-table{width:100%;border-collapse:collapse;min-width:760px;table-layout:fixed}.sor-editor-table th,.sor-editor-table td{border:1px solid #bfcbd6;padding:5px;vertical-align:top}.sor-editor-table th{background:#edf2f6}.sor-fixed-table .sor-editor-table th{width:28%;text-align:left;font-weight:600}.sor-fixed-table .sor-editor-table{min-width:620px}.sor-editable-cell{background:#fffbed}.sor-editor-table textarea{width:100%;min-height:48px;border:0;padding:5px;resize:vertical;background:#fff}.sor-editable-cell textarea{background:#fffef6}.sor-action-col,.sor-repeatable-table .sor-editor-table td:last-child{width:45px;text-align:center}.sor-preview-shell{display:none;position:fixed;z-index:1000;inset:0;background:#68737d;overflow:auto;padding:52px 20px 20px}.sor-preview-shell.active{display:block}.sor-preview-toolbar{position:fixed;z-index:1001;top:0;left:0;right:0;height:44px;background:#132b43;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px}.sor-preview-toolbar button{background:#fff;border:0;padding:6px 12px;cursor:pointer}.sor-docx-preview{max-width:210mm;margin:auto}.sor-docx-preview .docx-wrapper{background:#68737d;padding:10px}.sor-docx-preview section.docx{box-shadow:0 2px 10px #27323b;margin:0 auto 12px!important}.btn.danger{color:#b42318;border-color:#e2a7a7}
+      .sor-hero{display:flex;justify-content:space-between;gap:20px;align-items:center;background:linear-gradient(135deg,#f7fafc,#eef4f8);border-left:4px solid #173b5e}.sor-kicker{margin:0;color:#a36600;font-size:11px;letter-spacing:.12em}.sor-hero h3{font-size:24px;margin:4px 0}.sor-hero p{margin:4px 0}.sor-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.sor-file-btn{position:relative;overflow:hidden}.sor-file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}.sor-meta{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:12px;align-items:end}.sor-meta label,.sor-attachment-category label{display:grid;gap:5px}.sor-meta label span,.sor-attachment-category label{font-size:12px;font-weight:700}.sor-template-fact{border:1px solid #c7d2dc;padding:10px 12px;background:#fff;display:grid;gap:2px}.sor-template-fact span,.sor-template-fact small{color:#607181}.sor-guide ul{columns:2;margin-bottom:0}.sor-guide li{break-inside:avoid;margin-bottom:7px}.sor-attachment-head,.sor-table-heading{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.sor-attachment-head h3,.sor-table-heading p{margin:0}.sor-table-heading>div{display:grid;gap:4px}.sor-chapter-badge{display:inline-block;width:max-content;margin:0 7px 2px 0;padding:2px 7px;border-radius:999px;background:#e6eef5;color:#173b5e;font-size:11px;font-style:normal;font-weight:700}.sor-attachment-category{display:grid;grid-template-columns:220px 1fr;gap:12px;margin:12px 0}.sor-attachment-item{display:grid;grid-template-columns:58px 1fr 32px;gap:10px;align-items:center;border-top:1px solid #d8e0e7;padding:8px 0}.sor-attachment-item img{width:56px;height:44px;object-fit:cover}.sor-attachment-item span>b{display:flex;width:56px;height:44px;align-items:center;justify-content:center;background:#e6edf3;font-size:11px}.sor-attachment-item div{display:grid}.sor-attachment-item small{color:#607181}.sor-attachment-item button,.sor-delete-row{border:1px solid #efb6b6;color:#b42318;background:#fff5f5;border-radius:6px;font-size:20px;cursor:pointer}.sor-sections{display:grid;gap:10px}.sor-section{border:1px solid #bdcad5;background:#fff}.sor-section summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:14px 16px;cursor:pointer;background:#f2f6f9}.sor-section summary span{display:grid;gap:3px}.sor-section summary small{font-weight:400;color:#607181}.sor-section summary em{font-style:normal;background:#173b5e;color:#fff;padding:3px 8px;border-radius:999px;font-size:11px}.sor-section-body{padding:14px 16px}.sor-section-tools{text-align:right;margin-bottom:8px}.sor-field{display:grid;grid-template-columns:minmax(160px,22%) 1fr;gap:5px 14px;padding:10px 0;border-top:1px solid #e0e6eb}.sor-field>span{display:block;font-weight:700;line-height:1.45}.sor-field>small{grid-column:2;color:#647587}.sor-field textarea{resize:vertical;min-height:70px}.sor-table-block{border-top:2px solid #8fa2b4;margin-top:14px;padding-top:12px}.sor-table-heading p{font-size:12px;color:#607181;margin-top:0}.sor-table-scroll{overflow:auto;margin-top:8px}.sor-editor-table{width:100%;border-collapse:collapse;min-width:760px;table-layout:fixed}.sor-editor-table th,.sor-editor-table td{border:1px solid #bfcbd6;padding:5px;vertical-align:top;background:#fff}.sor-editor-table th{background:#edf2f6}.sor-editor-table textarea{width:100%;min-height:48px;border:0;padding:5px;resize:vertical;background:#fff}.sor-action-col,.sor-repeatable-table .sor-editor-table td:last-child{width:54px;text-align:center}.sor-image-cell{display:grid;gap:7px}.sor-image-control{display:flex;align-items:center;gap:7px;padding-top:6px;border-top:1px dashed #c7d2dc}.sor-image-control img{width:88px;height:62px;object-fit:contain;background:#f3f6f8;border:1px solid #ccd6df}.sor-image-control span{min-width:0;overflow:hidden;text-overflow:ellipsis}.sor-image-control button{border:0;background:none;color:#b42318;cursor:pointer;white-space:nowrap}.sor-image-control small{color:#647587}.sor-preview-shell{display:none;position:fixed;z-index:1000;inset:0;background:#68737d;overflow:auto;padding:52px 20px 20px}.sor-preview-shell.active{display:block}.sor-preview-toolbar{position:fixed;z-index:1001;top:0;left:0;right:0;height:44px;background:#132b43;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px}.sor-preview-toolbar button{background:#fff;border:0;padding:6px 12px;cursor:pointer}.sor-docx-preview{max-width:210mm;margin:auto}.sor-docx-preview .docx-wrapper{background:#68737d;padding:10px}.sor-docx-preview section.docx{box-shadow:0 2px 10px #27323b;margin:0 auto 12px!important}.btn.danger{color:#b42318;border-color:#e2a7a7}
       @media(max-width:900px){.sor-hero{align-items:flex-start;flex-direction:column}.sor-actions{justify-content:flex-start}.sor-meta{grid-template-columns:1fr}.sor-guide ul{columns:1}.sor-field{grid-template-columns:1fr}.sor-field>small{grid-column:1}.sor-attachment-category{grid-template-columns:1fr}}
       @media print{@page{size:A4 portrait;margin:0}body>*{display:none!important}.sor-preview-shell.active{display:block!important;position:static!important;inset:auto!important;background:#fff!important;padding:0!important;overflow:visible!important}.sor-preview-toolbar{display:none!important}.sor-docx-preview{display:block!important;max-width:none!important}.sor-docx-preview .docx-wrapper{display:block!important;background:#fff!important;padding:0!important}.sor-docx-preview section.docx{display:block!important;box-shadow:none!important;margin:0!important;page-break-after:always!important;width:210mm!important;min-height:297mm!important}}
     `;
