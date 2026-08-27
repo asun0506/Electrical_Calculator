@@ -23,6 +23,12 @@
     perpendicularity: { label: '垂直度 t', factor: 1, note: '按全值 t 贡献' },
     custom: { label: '自定义', factor: 1, note: '按用户输入的折算系数' },
   };
+  const VERIFY_METHODS = {
+    rss3: { label: 'RSS 3σ（默认）', short: 'RSS 3σ', sigma: 3 },
+    rss4: { label: 'RSS 4σ', short: 'RSS 4σ', sigma: 4 },
+    rss6: { label: 'RSS 6σ', short: 'RSS 6σ', sigma: 6 },
+    worst: { label: '极值法', short: '极值法', sigma: null },
+  };
 
   let state;
   let currentHost;
@@ -45,6 +51,7 @@
     return {
       id: uid('dim'), name: '', kind: 'clearance', image: '', nominal: '',
       toleranceMode: 'direct', lowerDeviation: '', upperDeviation: '',
+      verificationMethod: 'rss3',
       contributors: [newContributor()], expanded: true,
     };
   }
@@ -73,6 +80,7 @@
         const result = Object.assign(newDimension(), dim || {});
         result.id = result.id || uid('dim');
         result.image = typeof result.image === 'string' && result.image.startsWith('data:image/') ? result.image : '';
+        result.verificationMethod = VERIFY_METHODS[result.verificationMethod] ? result.verificationMethod : 'rss3';
         result.contributors = Array.isArray(result.contributors) && result.contributors.length
           ? result.contributors.map((part) => Object.assign(newContributor(), part || {}))
           : [newContributor()];
@@ -125,6 +133,18 @@
     return String(value) === String(expected) ? ' selected' : '';
   }
 
+  function verificationMethod(dim) {
+    return VERIFY_METHODS[dim.verificationMethod] ? dim.verificationMethod : 'rss3';
+  }
+
+  function verificationLabel(dim) {
+    return VERIFY_METHODS[verificationMethod(dim)].short;
+  }
+
+  function toleranceReferences(result) {
+    return `3σ ±${f(result.rss3)} · 4σ ±${f(result.rss4)} · 6σ ±${f(result.rss6)} · 极值 ±${f(result.wc)}`;
+  }
+
   function calculateDimension(dim, standard) {
     const spec = standard && standard.valid
       ? (dim.kind === 'creepage' ? standard.creepage : standard.clearance)
@@ -134,7 +154,11 @@
     let upper = null;
     let wc = null;
     let rss = null;
+    let rss3 = null;
+    let rss4 = null;
+    let rss6 = null;
     let sigma = null;
+    let selectedTolerance = null;
     let validParts = [];
 
     if (dim.toleranceMode === 'chain') {
@@ -159,8 +183,13 @@
         wc = wcSum;
         rss = Math.sqrt(rssSq);
         sigma = rss / 3;
-        lower = -rss;
-        upper = rss;
+        rss3 = rss;
+        rss4 = sigma * 4;
+        rss6 = sigma * 6;
+        const method = verificationMethod(dim);
+        selectedTolerance = method === 'worst' ? wc : { rss3, rss4, rss6 }[method];
+        lower = -selectedTolerance;
+        upper = selectedTolerance;
       }
     } else if (nominal != null) {
       const lo = n(dim.lowerDeviation);
@@ -170,6 +199,10 @@
       wc = Math.max(Math.abs(lower), Math.abs(upper));
       rss = wc;
       sigma = rss / 3;
+      rss3 = rss;
+      rss4 = sigma * 4;
+      rss6 = sigma * 6;
+      selectedTolerance = wc;
     }
 
     const inputComplete = dim.toleranceMode === 'chain'
@@ -179,7 +212,7 @@
     const maximum = nominal == null || upper == null ? null : nominal + upper;
     const complete = inputComplete && Number.isFinite(minimum) && Number.isFinite(spec);
     const pass = complete ? minimum >= spec : null;
-    return { spec, nominal, lower, upper, minimum, maximum, wc, rss, sigma, validParts, inputComplete, complete, pass };
+    return { spec, nominal, lower, upper, minimum, maximum, wc, rss, rss3, rss4, rss6, sigma, selectedTolerance, verificationMethod: verificationMethod(dim), validParts, inputComplete, complete, pass };
   }
 
   function layerSummary(level) {
@@ -226,7 +259,7 @@
           <div class="field"><label>日期</label><input class="iec-plain-input" type="date" data-project="date" value="${E.escapeHtml(p.date)}"></div>
         </div>
         <div class="note" style="margin-top:14px">
-          项目自动保存在当前浏览器。正式判定采用 <b>RSS 统计法，3σ = RSS 累积公差</b>；极值累积仅作参考。标准数据沿用本工具 IEC 60664-1 表 F.2（Case A）/F.5 与海拔修正逻辑，最终设计仍需结合绝缘类型及适用产品标准复核。
+          项目自动保存在当前浏览器。尺寸链默认采用 <b>RSS 3σ</b> 判定，也可逐条切换为 RSS 4σ、RSS 6σ 或极值法；所有方法的参考值会同时显示。标准数据沿用本工具 IEC 60664-1 表 F.2（Case A）/F.5 与海拔修正逻辑，最终设计仍需结合绝缘类型及适用产品标准复核。
         </div>
       </div>`;
   }
@@ -247,7 +280,7 @@
       ? `<button class="iec-image-button" data-action="pick-image" data-level="${levelIndex}" data-dim="${dimIndex}" title="更换截图"><img src="${dim.image}" alt="尺寸截图"></button>`
       : `<button class="iec-image-empty" data-action="pick-image" data-level="${levelIndex}" data-dim="${dimIndex}">添加截图</button>`;
     const toleranceText = dim.toleranceMode === 'chain'
-      ? `±${f(result.rss)} (RSS/3σ)<small>极值 ±${f(result.wc)}</small>`
+      ? `±${f(result.selectedTolerance)} (${verificationLabel(dim)})<small>${toleranceReferences(result)}</small>`
       : `${f(result.lower)} / +${f(result.upper)}`;
     const status = result.complete ? (result.pass ? 'pass' : 'fail') : 'pending';
     return `
@@ -285,8 +318,13 @@
             <div class="field"><label>名义尺寸 (mm)</label><input class="iec-plain-input" type="number" step="any" data-level="${levelIndex}" data-dim="${dimIndex}" data-dim-field="nominal" value="${E.escapeHtml(dim.nominal)}"></div>
             <div class="field"><label>下偏差 (mm)</label><input class="iec-plain-input" type="number" step="any" data-level="${levelIndex}" data-dim="${dimIndex}" data-dim-field="lowerDeviation" value="${E.escapeHtml(dim.lowerDeviation)}" placeholder="例：-0.20"></div>
             <div class="field"><label>上偏差 (mm)</label><input class="iec-plain-input" type="number" step="any" data-level="${levelIndex}" data-dim="${dimIndex}" data-dim-field="upperDeviation" value="${E.escapeHtml(dim.upperDeviation)}" placeholder="例：+0.20"></div>` : `
+            <div class="field"><label>判定方式</label><select data-level="${levelIndex}" data-dim="${dimIndex}" data-dim-field="verificationMethod">
+              ${Object.keys(VERIFY_METHODS).map((key) => `<option value="${key}"${selected(verificationMethod(dim), key)}>${VERIFY_METHODS[key].label}</option>`).join('')}
+            </select></div>
             <div class="iec-rss-result"><span>闭环名义</span><b>${f(result.nominal)} mm</b></div>
-            <div class="iec-rss-result"><span>RSS = 3σ</span><b>±${f(result.rss)} mm</b></div>
+            <div class="iec-rss-result"><span>RSS 3σ（默认）</span><b>±${f(result.rss3)} mm</b></div>
+            <div class="iec-rss-result"><span>RSS 4σ 参考</span><b>±${f(result.rss4)} mm</b></div>
+            <div class="iec-rss-result"><span>RSS 6σ 参考</span><b>±${f(result.rss6)} mm</b></div>
             <div class="iec-rss-result"><span>σ</span><b>${f(result.sigma)} mm</b></div>
             <div class="iec-rss-result secondary"><span>极值参考</span><b>±${f(result.wc)} mm</b></div>`}
         </div>
@@ -316,11 +354,11 @@
     }).join('');
     const chart = result.validParts.length && result.sigma > 0
       ? `<div class="iec-chain-chart">${T.normalChart({
-          title: `尺寸链公差带分布（RSS 3σ = ±${f(result.rss)} mm）`,
-          mean: result.nominal, sigma: result.sigma, tol: result.rss, width: 520, height: 300,
-          note: `σ = ${f(result.sigma)} mm；3σ = RSS = ±${f(result.rss)} mm；极值 ±${f(result.wc)} mm 仅作参考。`,
+          title: `尺寸链公差带分布（${verificationLabel(dim)} = ±${f(result.selectedTolerance)} mm）`,
+          mean: result.nominal, sigma: result.sigma, tol: result.selectedTolerance, width: 520, height: 300,
+          note: `当前判定：${verificationLabel(dim)} ±${f(result.selectedTolerance)} mm；σ = ${f(result.sigma)} mm；${toleranceReferences(result)} mm。`,
         })}</div>`
-      : `<div class="iec-chain-chart iec-chain-chart-empty">填写完整尺寸链后显示 RSS 3σ 公差带分布图</div>`;
+      : `<div class="iec-chain-chart iec-chain-chart-empty">填写完整尺寸链后显示所选判定方式的公差带分布图</div>`;
     return `
       <div class="iec-chain-box">
         <div class="iec-chain-layout">
@@ -331,7 +369,7 @@
             </div>
             <div class="iec-chain-labels"><span>尺寸名</span><span>尺寸/mm</span><span>公差 t/mm</span><span>公差类型</span><span>方向</span><span>折算系数</span><span></span></div>
             ${rows}
-            <div class="iec-tol-assumption">轮廓度与位置度默认按总公差带折算为单侧 t/2；普通尺寸公差按 ±t；平面度、平行度、垂直度按全值 t。必要时选择“自定义”调整系数。</div>
+            <div class="iec-tol-assumption">轮廓度与位置度默认按总公差带折算为单侧 t/2；普通尺寸公差按 ±t；平面度、平行度、垂直度按全值 t。尺寸链合成值默认视为 3σ，由此反算σ并给出 4σ、6σ参考；极值法按各公差贡献绝对值直接累加。</div>
           </div>
           ${chart}
         </div>
@@ -385,7 +423,7 @@
             return `<div class="iec-summary-card ${item.status}"><span>${level.name}</span><strong>${statusLabel(item.status)}</strong><small>${s.valid ? `电气间隙 ≥ ${f(s.clearance)} mm · 爬电距离 ≥ ${f(s.creepage)} mm` : E.escapeHtml(s.error)}</small><em>${item.completed}/${level.dimensions.length} 条完成，${item.failed} 条不通过</em></div>`;
           }).join('')}
         </div>
-        <div class="status-banner ${statusClass(overall)}">${overall === 'pass' ? '三层边界下所有已建立的关键尺寸均按 RSS 3σ 最小尺寸通过。' : overall === 'fail' ? '至少一个层级存在参数错误或关键尺寸不满足要求，请查看红色条目。' : '请补充三个层级的关键尺寸并完成校核；未完成条目不计为通过。'}</div>
+        <div class="status-banner ${statusClass(overall)}">${overall === 'pass' ? '三层边界下所有已建立的关键尺寸均按各自选定的公差判定方式通过。' : overall === 'fail' ? '至少一个层级存在参数错误或关键尺寸不满足要求，请查看红色条目。' : '请补充三个层级的关键尺寸并完成校核；未完成条目不计为通过。'}</div>
       </div>`;
   }
 
@@ -485,7 +523,9 @@
     return level.dimensions.map((dim, index) => {
       const r = summary.results[index];
       const status = r.complete ? (r.pass ? '通过' : '不通过') : '待输入';
-      const tol = dim.toleranceMode === 'chain' ? `±${f(r.rss)} (RSS/3σ)` : `${f(r.lower)} / +${f(r.upper)}`;
+      const tol = dim.toleranceMode === 'chain'
+        ? `±${f(r.selectedTolerance)} (${verificationLabel(dim)})<small>${toleranceReferences(r)}</small>`
+        : `${f(r.lower)} / +${f(r.upper)}`;
       const image = dim.image ? `<img class="report-image" src="${dim.image}" alt="尺寸截图">` : '—';
       return `<tr><td>${index + 1}</td><td>${E.escapeHtml(dim.name || '未命名')}</td><td>${image}</td><td>${dim.kind === 'creepage' ? '爬电距离' : '电气间隙'}</td><td>${f(r.nominal)}</td><td>${tol}</td><td>${f(r.minimum)}</td><td>${f(r.spec)}</td><td class="report-${status === '通过' ? 'pass' : status === '不通过' ? 'fail' : 'pending'}">${status}</td></tr>`;
     }).join('');
@@ -496,7 +536,7 @@
       if (dim.toleranceMode !== 'chain') return '';
       const r = summary.results[dimIndex];
       const rows = r.validParts.map((part) => `<tr><td>${E.escapeHtml(part.name || '尺寸')}</td><td>${f(part.size)}</td><td>${f(part.tolerance)}</td><td>${E.escapeHtml((TOL_TYPES[part.type] || TOL_TYPES.custom).label)}</td><td>${part.direction > 0 ? '增环' : '减环'}</td><td>${f(part.factor)}</td><td>${f(part.contribution)}</td></tr>`).join('');
-      const chart = r.validParts.length && r.sigma > 0 ? T.normalChart({ title: `${E.escapeHtml(dim.name || '关键尺寸')} — RSS 3σ 公差带`, mean: r.nominal, sigma: r.sigma, tol: r.rss, width: 480, height: 250, note: `σ = ${f(r.sigma)} mm；3σ = RSS = ±${f(r.rss)} mm；极值 ±${f(r.wc)} mm 仅作参考。` }) : '<div class="report-chart-empty">尺寸链不完整，暂无分布图</div>';
+      const chart = r.validParts.length && r.sigma > 0 ? T.normalChart({ title: `${E.escapeHtml(dim.name || '关键尺寸')} — ${verificationLabel(dim)} 公差带`, mean: r.nominal, sigma: r.sigma, tol: r.selectedTolerance, width: 480, height: 250, note: `当前判定：${verificationLabel(dim)} ±${f(r.selectedTolerance)} mm；σ = ${f(r.sigma)} mm；${toleranceReferences(r)} mm。` }) : '<div class="report-chart-empty">尺寸链不完整，暂无分布图</div>';
       return `<div class="report-chain"><h4>${E.escapeHtml(dim.name || '关键尺寸')} — 尺寸链明细与公差分布</h4>
         <table class="report-chain-layout"><colgroup><col style="width:57%"><col style="width:43%"></colgroup><tr>
           <td class="report-chain-table-cell"><table class="report-chain-table"><thead><tr><th>尺寸名</th><th>尺寸/mm</th><th>公差/mm</th><th>类型</th><th>方向</th><th>系数</th><th>贡献/mm</th></tr></thead><tbody>${rows || '<tr><td colspan="7">尚未填写完整尺寸链</td></tr>'}</tbody></table></td>
@@ -513,7 +553,7 @@
     return `
       <article class="iec-report">
         <header><div><p>ENGINEERING VERIFICATION REPORT</p><h1>电气间隙 / 爬电距离系统设计校核报告</h1></div><strong class="report-overall ${overall === '通过' ? 'report-pass' : overall === '不通过' ? 'report-fail' : 'report-pending'}">${overall}</strong></header>
-        <table class="report-meta"><tr><th>项目名称</th><td>${E.escapeHtml(state.project.name)}</td><th>项目编号</th><td>${E.escapeHtml(state.project.number || '—')}</td></tr><tr><th>编制人</th><td>${E.escapeHtml(state.project.author || '—')}</td><th>日期</th><td>${E.escapeHtml(state.project.date || today())}</td></tr><tr><th>参考标准</th><td>${E.escapeHtml(state.project.standard)}</td><th>判定方法</th><td>RSS 统计法，3σ = RSS</td></tr></table>
+        <table class="report-meta"><tr><th>项目名称</th><td>${E.escapeHtml(state.project.name)}</td><th>项目编号</th><td>${E.escapeHtml(state.project.number || '—')}</td></tr><tr><th>编制人</th><td>${E.escapeHtml(state.project.author || '—')}</td><th>日期</th><td>${E.escapeHtml(state.project.date || today())}</td></tr><tr><th>参考标准</th><td>${E.escapeHtml(state.project.standard)}</td><th>判定方法</th><td>关键尺寸逐条选择（默认 RSS 3σ）</td></tr></table>
         ${state.levels.map((level, index) => {
           const item = summaries[index];
           const s = item.standard;
@@ -523,19 +563,19 @@
             ${reportChainDetails(level, item)}
           </section>`;
         }).join('')}
-        <section class="report-conclusion"><h2>汇总结论</h2><p>系统总体结论：<strong>${overall}</strong>。正式判定基于 RSS 统计累积，假设各尺寸环节独立且近似正态分布，并以 ±3σ = RSS 作为尺寸范围。极值累积只作为设计风险参考。</p><ul>${state.levels.map((level, index) => `<li>${level.name}：${statusLabel(summaries[index].status)}，完成 ${summaries[index].completed}/${level.dimensions.length} 条，不通过 ${summaries[index].failed} 条。</li>`).join('')}</ul></section>
+        <section class="report-conclusion"><h2>汇总结论</h2><p>系统总体结论：<strong>${overall}</strong>。尺寸链默认按 RSS 3σ 判定，并允许每条关键尺寸独立选择 RSS 4σ、RSS 6σ 或极值法。RSS 法假设各尺寸环节独立且近似正态分布；极值法按公差贡献绝对值累加。具体判定方法与 3σ/4σ/6σ/极值参考值见各条记录。</p><ul>${state.levels.map((level, index) => `<li>${level.name}：${statusLabel(summaries[index].status)}，完成 ${summaries[index].completed}/${level.dimensions.length} 条，不通过 ${summaries[index].failed} 条。</li>`).join('')}</ul></section>
         <footer>本报告由电气工程师综合计算器生成。标准表格、绝缘类型及具体产品要求应由工程师在设计冻结前复核。</footer>
       </article>`;
   }
 
   function reportStyle() {
     return `
-      body{font-family:"Microsoft YaHei",Arial,sans-serif;color:#172230;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact} .iec-report{max-width:1120px;margin:0 auto;padding:18px;font-size:12px;line-height:1.4}
+      body{font-family:"Microsoft YaHei",Arial,sans-serif;color:#172230;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact} .iec-report{width:281mm;max-width:281mm;min-height:194mm;box-sizing:border-box;margin:0 auto;padding:8mm;font-size:10.5pt;line-height:1.4}
       .iec-report header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #173b5e;padding-bottom:14px;margin-bottom:16px}.iec-report header p{margin:0;color:#9b6500;font-size:10px;letter-spacing:.14em}.iec-report h1{font-size:23px;margin:3px 0}.iec-report h2{font-size:16px;color:#173b5e;border-bottom:1px solid #aebac6;padding-bottom:6px}.iec-report h2 span{font-size:9px;border:1px solid #71879a;padding:2px 5px;margin-right:8px}.iec-report h4{margin:14px 0 6px}
       .report-overall{padding:8px 14px;border:2px solid;font-size:16px}.report-pass{color:#08775a}.report-fail{color:#b42318}.report-pending{color:#9a6400}
       .iec-report table{width:100%;border-collapse:collapse;margin:8px 0 14px;table-layout:fixed}.iec-report th,.iec-report td{border:1px solid #bfc9d3;padding:6px 7px;vertical-align:middle;word-break:break-word}.iec-report th{background:#edf2f6;color:#274159}.report-meta th{width:12%}.report-meta td{width:38%}.report-boundary th{width:10%}.report-checks th:nth-child(1){width:3%}.report-checks th:nth-child(2){width:16%}.report-checks th:nth-child(3){width:20%}.report-checks th:nth-child(4){width:9%}.report-checks th:nth-child(5),.report-checks th:nth-child(6),.report-checks th:nth-child(7),.report-checks th:nth-child(8){width:9%}.report-checks th:nth-child(9){width:8%}
-      .report-image{display:block;max-width:100%;max-height:150px;margin:auto}.report-level{break-before:page;page-break-before:always}.report-chain{break-inside:avoid;page-break-inside:avoid;margin-top:10px}.iec-report table.report-chain-layout{margin:5px 0 10px;table-layout:fixed;border-collapse:collapse}.report-chain-layout>tbody>tr>td{border:0;padding:0 6px;vertical-align:top}.report-chain-layout>tbody>tr>td:first-child{padding-left:0}.report-chain-layout>tbody>tr>td:last-child{padding-right:0}.iec-report table.report-chain-table{margin:0;font-size:9px;table-layout:fixed}.report-chain-table th,.report-chain-table td{padding:4px 3px}.report-chain-table th:nth-child(1){width:22%}.report-chain-table th:nth-child(2),.report-chain-table th:nth-child(3),.report-chain-table th:nth-child(5),.report-chain-table th:nth-child(6),.report-chain-table th:nth-child(7){width:11%}.report-chain-table th:nth-child(4){width:23%}.report-chain-chart-cell{border:1px solid #cbd5df!important;background:#fbfcfd}.report-chain-chart-cell .chart-title{text-align:center;font-size:11px;font-weight:700;margin:2px 0}.report-chain-chart-cell svg{display:block;max-height:205px}.report-chain-chart-cell .note{margin-top:2px;padding:4px 6px;font-size:8px;color:#43596c}.report-chart-empty{display:flex;align-items:center;justify-content:center;min-height:190px;color:#687887;font-size:10px}.chart-title{text-align:center;font-weight:700;margin-top:8px}.note{padding:6px;color:#43596c}.report-conclusion{border:2px solid #173b5e;padding:10px 14px;break-inside:avoid}.iec-report footer{margin-top:16px;border-top:1px solid #cfd7e1;padding-top:8px;color:#5e6b78;font-size:10px}
-      @page{size:A4 landscape;margin:8mm}`;
+      .report-image{display:block;max-width:100%;max-height:150px;margin:auto}.report-checks td small{display:block;margin-top:3px;color:#596b7a;font-size:7.5px;line-height:1.25}.report-level{break-before:page;page-break-before:always}.report-chain{break-inside:avoid;page-break-inside:avoid;margin-top:10px}.iec-report table.report-chain-layout{margin:5px 0 10px;table-layout:fixed;border-collapse:collapse}.report-chain-layout>tbody>tr>td{border:0;padding:0 6px;vertical-align:top}.report-chain-layout>tbody>tr>td:first-child{padding-left:0}.report-chain-layout>tbody>tr>td:last-child{padding-right:0}.iec-report table.report-chain-table{margin:0;font-size:9px;table-layout:fixed}.report-chain-table th,.report-chain-table td{padding:4px 3px}.report-chain-table th:nth-child(1){width:22%}.report-chain-table th:nth-child(2),.report-chain-table th:nth-child(3),.report-chain-table th:nth-child(5),.report-chain-table th:nth-child(6),.report-chain-table th:nth-child(7){width:11%}.report-chain-table th:nth-child(4){width:23%}.report-chain-chart-cell{border:1px solid #cbd5df!important;background:#fbfcfd}.report-chain-chart-cell .chart-title{text-align:center;font-size:11px;font-weight:700;margin:2px 0}.report-chain-chart-cell svg{display:block;max-height:205px}.report-chain-chart-cell .note{margin-top:2px;padding:4px 6px;font-size:8px;color:#43596c}.report-chart-empty{display:flex;align-items:center;justify-content:center;min-height:190px;color:#687887;font-size:10px}.chart-title{text-align:center;font-weight:700;margin-top:8px}.note{padding:6px;color:#43596c}.report-conclusion{border:2px solid #173b5e;padding:10px 14px;break-inside:avoid}.iec-report footer{margin-top:16px;border-top:1px solid #cfd7e1;padding-top:8px;color:#5e6b78;font-size:10px}
+      @page{size:297mm 210mm;margin:8mm}`;
   }
 
   function reportFilename(ext) {
@@ -615,7 +655,7 @@
     title: '电气间隙/爬电距离',
     icon: '⚡',
     group: '电气计算',
-    desc: '按电芯级、模组级和 PACK 级分层计算绝缘距离标准，建立关键尺寸 RSS 3σ 校核并导出工程报告。',
+    desc: '按电芯级、模组级和 PACK 级分层计算绝缘距离标准，支持 RSS 3σ/4σ/6σ 与极值法校核并导出工程报告。',
     render(host) {
       if (!Core) throw new Error('IEC 60664 标准数据未加载');
       state = loadState();

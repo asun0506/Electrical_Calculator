@@ -1,0 +1,13 @@
+Third-party browser libraries used by the SOR generator
+
+1. JSZip 3.10.1
+   Copyright (c) Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso
+   License: MIT
+   Source: https://github.com/Stuk/jszip
+
+2. docx-preview 0.4.0 (docxjs)
+   Copyright (c) Volodymyr Baydalka
+   License: Apache License 2.0
+   Source: https://github.com/VolodymyrBaydalka/docxjs
+
+The complete license texts are available at the source repositories above.

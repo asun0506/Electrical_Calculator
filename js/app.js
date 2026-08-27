@@ -36,6 +36,7 @@
     'busbar-temp': '<path d="M4 5h7v6H4z"/><path d="M13 3v7a2.5 2.5 0 1 0 2 0V3"/>',
     materials: '<ellipse cx="9" cy="4" rx="6" ry="2"/><path d="M3 4v4c0 1.1 2.7 2 6 2s6-.9 6-2V4M3 8v4c0 1.1 2.7 2 6 2s6-.9 6-2V8"/>',
     'part-estimator': '<rect x="3" y="2" width="12" height="13" rx="1"/><path d="M6 5h6M6 8h2m2 0h2M6 11h2m2 0h2"/>',
+    'sor-generator': '<path d="M4 2h7l3 3v9H4z"/><path d="M11 2v3h3M6 8h6M6 11h5"/>',
   };
 
   function moduleIcon(id) {

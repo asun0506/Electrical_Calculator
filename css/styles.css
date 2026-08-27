@@ -960,7 +960,7 @@ body { background: var(--bg); line-height: 1.55; }
 .iec-level-status.pending, .iec-status.pending { color: var(--warning); background: var(--warning-soft); border-color: #dec48c; }
 .iec-standard-grid { margin: 15px 0; }
 .iec-table-wrap { overflow-x: auto; border: 1px solid #c7d1da; }
-.iec-check-table { width: 100%; min-width: 1180px; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
+.iec-check-table { width: 100%; min-width: 1280px; border-collapse: collapse; table-layout: fixed; font-size: 12px; }
 .iec-check-table th, .iec-check-table td { border: 1px solid #d7dee5; padding: 7px; vertical-align: middle; }
 .iec-check-table th { background: #edf2f6; color: #334b61; font-weight: 700; text-align: left; }
 .iec-check-table th:nth-child(1) { width: 34px; }
@@ -968,7 +968,7 @@ body { background: var(--bg); line-height: 1.55; }
 .iec-check-table th:nth-child(3) { width: 150px; }
 .iec-check-table th:nth-child(4) { width: 110px; }
 .iec-check-table th:nth-child(5), .iec-check-table th:nth-child(7), .iec-check-table th:nth-child(8) { width: 80px; }
-.iec-check-table th:nth-child(6) { width: 120px; }
+.iec-check-table th:nth-child(6) { width: 220px; }
 .iec-check-table th:nth-child(9) { width: 76px; }
 .iec-check-table th:nth-child(10) { width: 125px; }
 .iec-check-row.fail { background: #fff8f7; }
