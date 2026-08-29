@@ -25,7 +25,7 @@
     const fields = {};
     const tables = {};
     schema.fields.forEach((field) => { fields[field.id] = field.default; });
-    schema.tables.forEach((table) => { tables[table.id] = clone(table.defaults); });
+    schema.tables.forEach((table) => { tables[table.id] = normalizeSequenceRows(table, clone(table.defaults)); });
     return {
       formatVersion: 3,
       templateSha256: schema.sourceSha256,
@@ -88,11 +88,44 @@
     </div>`;
   }
 
-  function tableColumnClass(header) {
+  function isSequenceHeader(header) {
     const normalized = String(header || '').replace(/[\s._/-]+/g, '').toLowerCase();
-    const isSequence = normalized.includes('序号')
-      || ['no', 'number'].includes(normalized);
-    return isSequence ? 'sor-col-index' : '';
+    return normalized.includes('序号') || ['no', 'number'].includes(normalized);
+  }
+
+  function tableColumnClass(header) {
+    return isSequenceHeader(header) ? 'sor-col-index' : '';
+  }
+
+  function sequenceValue(table, rows, column, rowIndex) {
+    const number = rowIndex + 1;
+    const example = rows.map((row) => String(row?.[column] || '').trim()).find(Boolean)
+      || (table.defaults || []).map((row) => String(row?.[column] || '').trim()).find(Boolean);
+    const match = /^(.*?)(\d+)(\D*)$/.exec(example || '');
+    if (!match) return String(number);
+    const digits = String(number).padStart(match[2].length, '0');
+    return `${match[1]}${digits}${match[3]}`;
+  }
+
+  function normalizeSequenceRows(table, sourceRows, overwrite = true) {
+    const rows = Array.isArray(sourceRows) && sourceRows.length
+      ? sourceRows.map((row) => table.headers.map((header, column) => row?.[column] == null ? '' : row[column]))
+      : [table.headers.map(() => '')];
+    table.headers.forEach((header, column) => {
+      if (!isSequenceHeader(header)) return;
+      rows.forEach((row, rowIndex) => {
+        if (overwrite || !String(row[column] || '').trim()) row[column] = sequenceValue(table, rows, column, rowIndex);
+      });
+    });
+    return rows;
+  }
+
+  function newTableRow(table, rows) {
+    const row = table.headers.map(() => '');
+    table.headers.forEach((header, column) => {
+      if (isSequenceHeader(header)) row[column] = sequenceValue(table, rows, column, rows.length);
+    });
+    return row;
   }
 
   function tableEditor(table) {
@@ -100,7 +133,7 @@
     const columnClasses = table.headers.map(tableColumnClass);
     return `<div class="sor-table-block sor-repeatable-table" data-sor-table="${esc(table.id)}">
       <div class="sor-table-heading">
-        <div><span class="sor-chapter-badge">${table.chapterNumber === '封面' ? '封面' : `章节 ${esc(table.chapterNumber)}`}</span><strong>${esc(table.title)}</strong><p>${esc(table.hint)}</p></div>
+        <div><span class="sor-chapter-badge">${table.chapterNumber === '封面' ? '封面' : `章节 ${esc(table.chapterNumber)}`}</span><strong>${esc(table.title)}</strong><p>${esc(table.hint)}</p><small class="sor-paste-hint">支持从 Excel 或其他表格复制多行、多列，并从选中的单元格直接粘贴。</small></div>
         <button type="button" class="btn sor-add-row" data-table-id="${esc(table.id)}">添加一行</button>
       </div>
       <div class="sor-table-scroll"><table class="sor-editor-table"><colgroup>${columnClasses.map((className) => `<col class="${className}">`).join('')}<col class="sor-col-action"></colgroup><thead><tr>${table.headers.map((header, ci) => `<th class="${columnClasses[ci]}">${esc(header)}</th>`).join('')}<th class="sor-action-col">操作</th></tr></thead>
@@ -177,12 +210,13 @@
     hostRef.querySelectorAll('textarea[data-table-id]').forEach((input) => input.addEventListener('input', () => {
       state.tables[input.dataset.tableId][Number(input.dataset.row)][Number(input.dataset.col)] = input.value;
     }));
+    hostRef.querySelectorAll('textarea[data-table-id]').forEach((input) => input.addEventListener('paste', pasteTableCells));
     hostRef.querySelector('#sorFileName').addEventListener('input', (event) => { state.meta.fileName = event.target.value; });
     hostRef.querySelectorAll('.sor-add-row').forEach((button) => button.addEventListener('click', () => {
       const table = tableById[button.dataset.tableId];
       const openIds = captureOpenSections();
       openIds.add(table.sectionId);
-      state.tables[table.id].push(table.headers.map(() => ''));
+      state.tables[table.id].push(newTableRow(table, state.tables[table.id]));
       render(openIds);
     }));
     hostRef.querySelectorAll('.sor-delete-row').forEach((button) => button.addEventListener('click', () => {
@@ -193,7 +227,8 @@
       openIds.add(tableById[tableId].sectionId);
       rows.splice(rowIndex, 1);
       shiftCellImagesAfterDelete(tableId, rowIndex);
-      if (!rows.length) rows.push(tableById[tableId].headers.map(() => ''));
+      if (!rows.length) rows.push(newTableRow(tableById[tableId], rows));
+      state.tables[tableId] = normalizeSequenceRows(tableById[tableId], rows);
       render(openIds);
     }));
     hostRef.querySelectorAll('[data-cell-image]').forEach((input) => input.addEventListener('change', importCellImage));
@@ -213,11 +248,69 @@
     hostRef.querySelector('#sorClosePreview').addEventListener('click', closePreview);
   }
 
+  function parseClipboardTable(text) {
+    const rows = [];
+    let row = [];
+    let cell = '';
+    let quoted = false;
+    for (let index = 0; index < text.length; index += 1) {
+      const char = text[index];
+      if (char === '"') {
+        if (quoted && text[index + 1] === '"') {
+          cell += '"';
+          index += 1;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (char === '\t' && !quoted) {
+        row.push(cell);
+        cell = '';
+      } else if ((char === '\n' || char === '\r') && !quoted) {
+        if (char === '\r' && text[index + 1] === '\n') index += 1;
+        row.push(cell);
+        rows.push(row);
+        row = [];
+        cell = '';
+      } else {
+        cell += char;
+      }
+    }
+    row.push(cell);
+    rows.push(row);
+    while (rows.length > 1 && rows[rows.length - 1].every((value) => value === '')) rows.pop();
+    return rows;
+  }
+
+  function pasteTableCells(event) {
+    const text = event.clipboardData?.getData('text/plain');
+    if (!text || (!text.includes('\t') && !/[\r\n]/.test(text))) return;
+    const grid = parseClipboardTable(text);
+    if (!grid.length) return;
+    event.preventDefault();
+    const tableId = event.currentTarget.dataset.tableId;
+    const table = tableById[tableId];
+    const startRow = Number(event.currentTarget.dataset.row);
+    const startColumn = Number(event.currentTarget.dataset.col);
+    const rows = state.tables[tableId];
+    const requiredRows = startRow + grid.length;
+    while (rows.length < requiredRows) rows.push(newTableRow(table, rows));
+    grid.forEach((values, rowOffset) => {
+      values.forEach((value, columnOffset) => {
+        const column = startColumn + columnOffset;
+        if (column < table.headers.length) rows[startRow + rowOffset][column] = value;
+      });
+    });
+    state.tables[tableId] = normalizeSequenceRows(table, rows, false);
+    const openIds = captureOpenSections();
+    openIds.add(table.sectionId);
+    render(openIds);
+  }
+
   function fillSection(sectionId) {
     const section = uiSections.find((item) => item.id === sectionId);
     if (!section) return;
     section.fieldIds.forEach((id) => { state.fields[id] = fieldById[id].default; });
-    section.tableIds.forEach((id) => { state.tables[id] = clone(tableById[id].defaults); });
+    section.tableIds.forEach((id) => { state.tables[id] = normalizeSequenceRows(tableById[id], clone(tableById[id].defaults)); });
     Object.keys(state.cellImages || {}).forEach((key) => {
       if (section.tableIds.some((id) => key.startsWith(`${id}:`))) delete state.cellImages[key];
     });
@@ -230,7 +323,7 @@
     Object.keys(state.fields).forEach((id) => { state.fields[id] = ''; });
     Object.keys(state.tables).forEach((id) => {
       const table = tableById[id];
-      state.tables[id] = [table.headers.map(() => '')];
+      state.tables[id] = normalizeSequenceRows(table, [table.headers.map(() => '')]);
     });
     state.cellImages = {};
     state.attachments = [];
@@ -333,7 +426,9 @@
       const next = defaultState();
       next.meta = { ...next.meta, ...(data.meta || {}) };
       Object.keys(next.fields).forEach((id) => { if (Object.prototype.hasOwnProperty.call(data.fields, id)) next.fields[id] = data.fields[id]; });
-      Object.keys(next.tables).forEach((id) => { if (Array.isArray(data.tables[id])) next.tables[id] = data.tables[id]; });
+      Object.keys(next.tables).forEach((id) => {
+        if (Array.isArray(data.tables[id])) next.tables[id] = normalizeSequenceRows(tableById[id], data.tables[id], false);
+      });
       next.cellImages = data.cellImages && typeof data.cellImages === 'object' ? data.cellImages : {};
       next.attachments = Array.isArray(data.attachments) ? data.attachments : [];
       state = next;
@@ -560,15 +655,23 @@
         renderAltChunks: true,
       });
       shell.setAttribute('aria-hidden', 'false');
+      const originalParent = shell.parentNode;
+      const originalNextSibling = shell.nextSibling;
+      document.body.appendChild(shell);
+      const restoreShell = () => {
+        originalParent.insertBefore(shell, originalNextSibling);
+        window.removeEventListener('afterprint', restoreShell);
+      };
+      window.addEventListener('afterprint', restoreShell);
       setTimeout(() => window.print(), 300);
     });
   }
 
   function moduleStyle() {
     return `
-      .sor-hero{display:flex;justify-content:space-between;gap:20px;align-items:center;background:linear-gradient(135deg,#f7fafc,#eef4f8);border-left:4px solid #173b5e}.sor-kicker{margin:0;color:#a36600;font-size:11px;letter-spacing:.12em}.sor-hero h3{font-size:24px;margin:4px 0}.sor-hero p{margin:4px 0}.sor-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.sor-file-btn{position:relative;overflow:hidden}.sor-file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}.sor-meta{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:12px;align-items:end}.sor-meta label,.sor-attachment-category label{display:grid;gap:5px}.sor-meta label span,.sor-attachment-category label{font-size:12px;font-weight:700}.sor-template-fact{border:1px solid #c7d2dc;padding:10px 12px;background:#fff;display:grid;gap:2px}.sor-template-fact span,.sor-template-fact small{color:#607181}.sor-guide ul{columns:2;margin-bottom:0}.sor-guide li{break-inside:avoid;margin-bottom:7px}.sor-attachment-head,.sor-table-heading{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.sor-attachment-head h3,.sor-table-heading p{margin:0}.sor-table-heading>div{display:grid;gap:4px}.sor-chapter-badge{display:inline-block;width:max-content;margin:0 7px 2px 0;padding:2px 7px;border-radius:999px;background:#e6eef5;color:#173b5e;font-size:11px;font-style:normal;font-weight:700}.sor-attachment-category{display:grid;grid-template-columns:220px 1fr;gap:12px;margin:12px 0}.sor-attachment-item{display:grid;grid-template-columns:58px 1fr 32px;gap:10px;align-items:center;border-top:1px solid #d8e0e7;padding:8px 0}.sor-attachment-item img{width:56px;height:44px;object-fit:cover}.sor-attachment-item span>b{display:flex;width:56px;height:44px;align-items:center;justify-content:center;background:#e6edf3;font-size:11px}.sor-attachment-item div{display:grid}.sor-attachment-item small{color:#607181}.sor-attachment-item button,.sor-delete-row{border:1px solid #efb6b6;color:#b42318;background:#fff5f5;border-radius:6px;font-size:20px;cursor:pointer}.sor-sections{display:grid;gap:10px}.sor-section{border:1px solid #bdcad5;background:#fff}.sor-section summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:14px 16px;cursor:pointer;background:#f2f6f9}.sor-section summary span{display:grid;gap:3px}.sor-section summary small{font-weight:400;color:#607181}.sor-section summary em{font-style:normal;background:#173b5e;color:#fff;padding:3px 8px;border-radius:999px;font-size:11px}.sor-section-body{padding:14px 16px}.sor-section-tools{text-align:right;margin-bottom:8px}.sor-field{display:grid;grid-template-columns:minmax(160px,22%) 1fr;gap:5px 14px;padding:10px 0;border-top:1px solid #e0e6eb}.sor-field>span{display:block;font-weight:700;line-height:1.45}.sor-field>small{grid-column:2;color:#647587}.sor-field textarea{resize:vertical;min-height:70px}.sor-table-block{border-top:2px solid #8fa2b4;margin-top:14px;padding-top:12px}.sor-table-heading p{font-size:12px;color:#607181;margin-top:0}.sor-table-scroll{overflow:auto;margin-top:8px}.sor-editor-table{width:100%;border-collapse:collapse;min-width:760px;table-layout:fixed}.sor-editor-table col.sor-col-index{width:78px}.sor-editor-table col.sor-col-action{width:54px}.sor-editor-table th,.sor-editor-table td{border:1px solid #bfcbd6;padding:5px;vertical-align:top;background:#fff}.sor-editor-table th{background:#edf2f6}.sor-editor-table th.sor-col-index,.sor-editor-table td.sor-col-index{text-align:center}.sor-editor-table td.sor-col-index textarea{text-align:center}.sor-editor-table textarea{width:100%;min-height:48px;border:0;padding:5px;resize:vertical;background:#fff}.sor-action-col,.sor-repeatable-table .sor-editor-table td:last-child{width:54px;text-align:center}.sor-image-cell{display:grid;gap:7px}.sor-image-control{display:flex;align-items:center;gap:7px;padding-top:6px;border-top:1px dashed #c7d2dc}.sor-image-control img{width:88px;height:62px;object-fit:contain;background:#f3f6f8;border:1px solid #ccd6df}.sor-image-control span{min-width:0;overflow:hidden;text-overflow:ellipsis}.sor-image-control button{border:0;background:none;color:#b42318;cursor:pointer;white-space:nowrap}.sor-image-control small{color:#647587}.sor-preview-shell{display:none;position:fixed;z-index:1000;inset:0;background:#68737d;overflow:auto;padding:52px 20px 20px}.sor-preview-shell.active{display:block}.sor-preview-toolbar{position:fixed;z-index:1001;top:0;left:0;right:0;height:44px;background:#132b43;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px}.sor-preview-toolbar button{background:#fff;border:0;padding:6px 12px;cursor:pointer}.sor-docx-preview{max-width:210mm;margin:auto}.sor-docx-preview .docx-wrapper{background:#68737d;padding:10px}.sor-docx-preview section.docx{box-shadow:0 2px 10px #27323b;margin:0 auto 12px!important}.btn.danger{color:#b42318;border-color:#e2a7a7}
+      .sor-hero{display:flex;justify-content:space-between;gap:20px;align-items:center;background:linear-gradient(135deg,#f7fafc,#eef4f8);border-left:4px solid #173b5e}.sor-kicker{margin:0;color:#a36600;font-size:11px;letter-spacing:.12em}.sor-hero h3{font-size:24px;margin:4px 0}.sor-hero p{margin:4px 0}.sor-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.sor-file-btn{position:relative;overflow:hidden}.sor-file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}.sor-meta{display:grid;grid-template-columns:1fr 1fr 1.3fr;gap:12px;align-items:end}.sor-meta label,.sor-attachment-category label{display:grid;gap:5px}.sor-meta label span,.sor-attachment-category label{font-size:12px;font-weight:700}.sor-template-fact{border:1px solid #c7d2dc;padding:10px 12px;background:#fff;display:grid;gap:2px}.sor-template-fact span,.sor-template-fact small{color:#607181}.sor-guide ul{columns:2;margin-bottom:0}.sor-guide li{break-inside:avoid;margin-bottom:7px}.sor-attachment-head,.sor-table-heading{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.sor-attachment-head h3,.sor-table-heading p{margin:0}.sor-table-heading>div{display:grid;gap:4px}.sor-paste-hint{font-size:11px;color:#3e627f}.sor-chapter-badge{display:inline-block;width:max-content;margin:0 7px 2px 0;padding:2px 7px;border-radius:999px;background:#e6eef5;color:#173b5e;font-size:11px;font-style:normal;font-weight:700}.sor-attachment-category{display:grid;grid-template-columns:220px 1fr;gap:12px;margin:12px 0}.sor-attachment-item{display:grid;grid-template-columns:58px 1fr 32px;gap:10px;align-items:center;border-top:1px solid #d8e0e7;padding:8px 0}.sor-attachment-item img{width:56px;height:44px;object-fit:cover}.sor-attachment-item span>b{display:flex;width:56px;height:44px;align-items:center;justify-content:center;background:#e6edf3;font-size:11px}.sor-attachment-item div{display:grid}.sor-attachment-item small{color:#607181}.sor-attachment-item button,.sor-delete-row{border:1px solid #efb6b6;color:#b42318;background:#fff5f5;border-radius:6px;font-size:20px;cursor:pointer}.sor-sections{display:grid;gap:10px}.sor-section{border:1px solid #bdcad5;background:#fff}.sor-section summary{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:14px 16px;cursor:pointer;background:#f2f6f9}.sor-section summary span{display:grid;gap:3px}.sor-section summary small{font-weight:400;color:#607181}.sor-section summary em{font-style:normal;background:#173b5e;color:#fff;padding:3px 8px;border-radius:999px;font-size:11px}.sor-section-body{padding:14px 16px}.sor-section-tools{text-align:right;margin-bottom:8px}.sor-field{display:grid;grid-template-columns:minmax(160px,22%) 1fr;gap:5px 14px;padding:10px 0;border-top:1px solid #e0e6eb}.sor-field>span{display:block;font-weight:700;line-height:1.45}.sor-field>small{grid-column:2;color:#647587}.sor-field textarea{resize:vertical;min-height:70px}.sor-table-block{border-top:2px solid #8fa2b4;margin-top:14px;padding-top:12px}.sor-table-heading p{font-size:12px;color:#607181;margin-top:0}.sor-table-scroll{overflow:auto;margin-top:8px}.sor-editor-table{width:100%;border-collapse:collapse;min-width:760px;table-layout:fixed}.sor-editor-table col.sor-col-index{width:78px}.sor-editor-table col.sor-col-action{width:54px}.sor-editor-table th,.sor-editor-table td{border:1px solid #bfcbd6;padding:5px;vertical-align:top;background:#fff}.sor-editor-table th{background:#edf2f6}.sor-editor-table th.sor-col-index,.sor-editor-table td.sor-col-index{text-align:center}.sor-editor-table td.sor-col-index textarea{text-align:center}.sor-editor-table textarea{width:100%;min-height:48px;border:0;padding:5px;resize:vertical;background:#fff}.sor-action-col,.sor-repeatable-table .sor-editor-table td:last-child{width:54px;text-align:center}.sor-image-cell{display:grid;gap:7px}.sor-image-control{display:flex;align-items:center;gap:7px;padding-top:6px;border-top:1px dashed #c7d2dc}.sor-image-control img{width:88px;height:62px;object-fit:contain;background:#f3f6f8;border:1px solid #ccd6df}.sor-image-control span{min-width:0;overflow:hidden;text-overflow:ellipsis}.sor-image-control button{border:0;background:none;color:#b42318;cursor:pointer;white-space:nowrap}.sor-image-control small{color:#647587}.sor-preview-shell{display:none;position:fixed;z-index:1000;inset:0;background:#68737d;overflow:auto;padding:52px 20px 20px}.sor-preview-shell.active{display:block}.sor-preview-toolbar{position:fixed;z-index:1001;top:0;left:0;right:0;height:44px;background:#132b43;color:#fff;display:flex;align-items:center;justify-content:space-between;padding:0 18px}.sor-preview-toolbar button{background:#fff;border:0;padding:6px 12px;cursor:pointer}.sor-docx-preview{max-width:210mm;margin:auto}.sor-docx-preview .docx-wrapper{background:#68737d;padding:10px}.sor-docx-preview section.docx{box-shadow:0 2px 10px #27323b;margin:0 auto 12px!important}.btn.danger{color:#b42318;border-color:#e2a7a7}
       @media(max-width:900px){.sor-hero{align-items:flex-start;flex-direction:column}.sor-actions{justify-content:flex-start}.sor-meta{grid-template-columns:1fr}.sor-guide ul{columns:1}.sor-field{grid-template-columns:1fr}.sor-field>small{grid-column:1}.sor-attachment-category{grid-template-columns:1fr}}
-      @media print{@page{size:A4 portrait;margin:0}body>*{display:none!important}.sor-preview-shell.active{display:block!important;position:static!important;inset:auto!important;background:#fff!important;padding:0!important;overflow:visible!important}.sor-preview-toolbar{display:none!important}.sor-docx-preview{display:block!important;max-width:none!important}.sor-docx-preview .docx-wrapper{display:block!important;background:#fff!important;padding:0!important}.sor-docx-preview section.docx{display:block!important;box-shadow:none!important;margin:0!important;page-break-after:always!important;width:210mm!important;min-height:297mm!important}}
+      @media print{@page{size:A4 portrait;margin:0}html,body{width:210mm!important;min-height:0!important;height:auto!important;background:#fff!important}body>*:not(.sor-preview-shell){display:none!important}.sor-preview-shell.active{display:block!important;position:static!important;inset:auto!important;width:210mm!important;background:#fff!important;padding:0!important;overflow:visible!important}.sor-preview-toolbar{display:none!important}.sor-docx-preview{display:block!important;max-width:none!important}.sor-docx-preview .docx-wrapper{display:block!important;background:#fff!important;padding:0!important}.sor-docx-preview section.docx{display:flex!important;flex-flow:column nowrap!important;box-sizing:border-box!important;box-shadow:none!important;margin:0!important;break-after:page!important;page-break-after:always!important;width:210mm!important;height:297mm!important;min-height:297mm!important;max-height:297mm!important;overflow:hidden!important}.sor-docx-preview section.docx:last-child{break-after:auto!important;page-break-after:auto!important}}
     `;
   }
 
