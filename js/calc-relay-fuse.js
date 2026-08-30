@@ -1,576 +1,458 @@
 /**
- * 计算器 1：继电器 / 保险丝 保护配合（数据点表格 → 时间–电流曲线）
- *
- * 两个能力：
- *  A. 数据点曲线表：用户为多条曲线（熔断器、继电器/接触器、电芯、工作/热极限……）
- *     各输入多组 (电流 I / A, 时间 t / s) 数据点，根据这些点在同一双对数图中生成曲线；
- *  B. 快速自动匹配：输入继电器与保险丝额定电流及负载电流，按裕量规则给结论，
- *     并可一键把按额定电流估算的参考熔断/耐受曲线填入数据表作为起点。
+ * 继电器 / 保险丝保护配合
+ * - 电池包电压、等效内阻与最大外短电流
+ * - 多导体段 / 定值电阻串并联组合
+ * - 厂家时间-电流曲线录入、人工校核分析、JSON 与 A4 PDF 报告
  */
 (function () {
   'use strict';
+
   const T = window.ElectricalToolkit;
   const E = window.ElUtil;
-
   const PALETTE = ['#dc2626', '#2563eb', '#16a34a', '#f59e0b', '#7c3aed', '#0891b2', '#db2777', '#64748b'];
+  const MATERIALS = {
+    copper: { name: '铜 Cu（退火）', rho: 1.72e-8, alpha: 0.00393 },
+    copper_hard: { name: '铜 Cu（硬拉）', rho: 1.77e-8, alpha: 0.00393 },
+    aluminum: { name: '铝 Al', rho: 2.82e-8, alpha: 0.00403 },
+    brass: { name: '黄铜（60Cu40Zn）', rho: 6.5e-8, alpha: 0.0015 },
+    steel: { name: '钢（低碳）', rho: 1.4e-7, alpha: 0.005 },
+  };
+  const RESISTANCE_UNITS = {
+    ohm: { label: 'Ω', factor: 1 },
+    mohm: { label: 'mΩ', factor: 1e3 },
+    uohm: { label: 'μΩ', factor: 1e6 },
+  };
+
+  let hostRef;
+  let batteryState;
   let curveSeq = 0;
-
-  T.register({
-    id: 'relay-fuse',
-    title: '继电器 / 保险丝匹配',
-    icon: '🔌',
-    group: '电气计算',
-    desc: '在表格中输入各设备的多组 (电流, 时间) 数据点，生成保护配合时间–电流曲线；也可按继电器/保险丝额定电流快速匹配。',
-
-    render(host) {
-      host.innerHTML = `
-        <!-- 数据点表格 -->
-        <div class="panel">
-          <h3 class="panel-title"><span class="dot"></span>① 数据点曲线表</h3>
-          <p style="margin:0 0 6px;color:var(--text-muted);font-size:13px">
-            为每个设备输入多组数据点 <b>(电流 I / A, 动作时间 t / s)</b>，同一条曲线请给 ≥ 2 个点。
-          </p>
-
-          <div class="sc-input">
-            <label>电池包最大短路电流 <span class="hint">（单一值 → 生成 X=A 竖直参考线）</span></label>
-            <div class="input-row">
-              <input id="cc-sc" type="number" value="2000" min="0" step="any">
-              <span class="unit">A</span>
-            </div>
-          </div>
-
-          <div id="cc-curves"></div>
-          <div class="btn-row">
-            <button class="btn btn-ghost" id="cc-add-curve">＋ 添加曲线</button>
-            <button class="btn btn-primary" id="cc-gen">生成图表</button>
-          </div>
-          <div class="io-row">
-            <button class="btn btn-ghost btn-sm" id="cc-export" type="button">↑ 导出当前校核</button>
-            <button class="btn btn-ghost btn-sm" id="cc-import" type="button">↓ 导入校核文件</button>
-            <input type="file" id="cc-file" accept=".json,application/json" style="display:none">
-            <span class="io-hint">导出为 JSON 文件保存本次校核，下次可导入继续修改</span>
-          </div>
-        </div>
-
-        <!-- 图表 -->
-        <div class="panel">
-          <h3 class="panel-title"><span class="dot"></span>② 保护配合曲线（时间–电流）</h3>
-          <p style="margin:0 0 14px;color:var(--text-muted);font-size:13px">
-            所有曲线绘制于同一双对数图中。曲线越低代表动作越快、越先脱扣。留空则自动适配数据范围。
-          </p>
-          <div class="chart-title-input">
-            <label>图表名称</label>
-            <input id="cc-title" type="text" placeholder="输入图表标题（显示在图表上方）" value="保护配合曲线（时间–电流）">
-          </div>
-          <div class="range-bar">
-            <div class="range-item">
-              <label>X 电流范围 (A)</label>
-              <input id="cc-xmin" type="number" step="any" placeholder="自动">
-              <span class="range-sep">～</span>
-              <input id="cc-xmax" type="number" step="any" placeholder="自动">
-            </div>
-            <div class="range-item">
-              <label>Y 时间范围 (s)</label>
-              <input id="cc-ymin" type="number" step="any" placeholder="自动">
-              <span class="range-sep">～</span>
-              <input id="cc-ymax" type="number" step="any" placeholder="自动">
-            </div>
-            <button class="btn btn-ghost btn-sm" id="cc-reset-range" type="button">重置为自动</button>
-          </div>
-          <div id="cc-chart"></div>
-        </div>
-
-        <!-- 快速自动匹配 -->
-        <div class="panel">
-          <h3 class="panel-title"><span class="dot"></span>③ 快速自动匹配（按额定电流）</h3>
-          <div class="grid cols-3">
-            <div class="field">
-              <label>继电器触点额定电流 <span class="hint">In_relay</span></label>
-              <div class="input-row">
-                <input id="rf-relay-in" type="number" value="30" min="0" step="any">
-                <span class="unit">A</span>
-              </div>
-            </div>
-            <div class="field">
-              <label>保险丝额定电流 <span class="hint">In_fuse</span></label>
-              <div class="input-row">
-                <input id="rf-fuse-in" type="number" value="20" min="0" step="any">
-                <span class="unit">A</span>
-              </div>
-            </div>
-            <div class="field">
-              <label>正常负载电流 <span class="hint">I_load</span></label>
-              <div class="input-row">
-                <input id="rf-load" type="number" value="12" min="0" step="any">
-                <span class="unit">A</span>
-              </div>
-            </div>
-          </div>
-          <div class="grid cols-2" style="margin-top:16px">
-            <div class="field">
-              <label>保险丝熔断特性</label>
-              <select id="rf-fuse-type">
-                <option value="slow">慢断（延时型）</option>
-                <option value="fast">快断（速断型）</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>负载类型</label>
-              <select id="rf-load-type">
-                <option value="resistive">阻性负载</option>
-                <option value="motor">电机 / 感性负载</option>
-                <option value="capacitive">容性负载</option>
-                <option value="inrush">高浪涌</option>
-              </select>
-            </div>
-          </div>
-          <div class="btn-row">
-            <button class="btn btn-ghost" id="rf-to-table">估算参考曲线 → 填入数据表</button>
-            <button class="btn btn-primary" id="rf-calc">开始匹配（数值结论）</button>
-          </div>
-          <div class="note" style="margin-top:14px">
-            仅填额定电流时，程序用工程近似（I²t 恒定）估算参考曲线并填入上方数据表；更准确请直接在上方表格录入厂家实测数据点。
-          </div>
-        </div>
-
-        <div class="panel" id="rf-result" style="display:none"></div>
-      `;
-
-      // 预置示例曲线：继电器触点 / 保险丝 / 线束发烟 / 电芯热失控
-      addCurve('继电器触点 30A', PALETTE[1], [[30, 1], [60, 0.25], [90, 0.11], [120, 0.0625], [300, 0.01]]);
-      addCurve('保险丝 慢断 20A', PALETTE[0], [[20, 1], [40, 0.25], [60, 0.11], [100, 0.04], [200, 0.01]]);
-      addCurve('线束发烟 2.5mm²', PALETTE[2], [[15, 100], [25, 30], [40, 10], [60, 4], [100, 1.2], [200, 0.3]]);
-      addCurve('电芯热失控', PALETTE[3], [[80, 600], [120, 300], [200, 120], [300, 50], [500, 18], [800, 8]]);
-
-      document.getElementById('cc-add-curve').addEventListener('click', () => {
-        addCurve('曲线 ' + (curveSeq), nextColor());
-      });
-      document.getElementById('cc-sc').addEventListener('input', renderChart);
-      document.getElementById('cc-gen').addEventListener('click', renderChart);
-      ['cc-xmin', 'cc-xmax', 'cc-ymin', 'cc-ymax'].forEach((id) =>
-        document.getElementById(id).addEventListener('input', renderChart)
-      );
-      document.getElementById('cc-reset-range').addEventListener('click', () => {
-        ['cc-xmin', 'cc-xmax', 'cc-ymin', 'cc-ymax'].forEach((id) => (document.getElementById(id).value = ''));
-        renderChart();
-      });
-      document.getElementById('cc-title').addEventListener('input', renderChart);
-      document.getElementById('cc-export').addEventListener('click', exportData);
-      document.getElementById('cc-import').addEventListener('click', () => document.getElementById('cc-file').click());
-      document.getElementById('cc-file').addEventListener('change', (e) => {
-        importData(e.target.files && e.target.files[0]);
-        e.target.value = '';
-      });
-      document.getElementById('rf-to-table').addEventListener('click', fillReferenceToTable);
-      document.getElementById('rf-calc').addEventListener('click', matchVerdict);
-      document.getElementById('rf-load-type').addEventListener('change', matchVerdict);
-
-      renderChart();
-      matchVerdict();
-    },
-  });
-
   let colorIdx = 2;
+  let componentSeq = 0;
+  let lastBatteryResult = null;
+
+  function esc(value) { return E.escapeHtml(value == null ? '' : String(value)); }
+  function clone(value) { return JSON.parse(JSON.stringify(value)); }
+
+  function newComponent(index, overrides = {}) {
+    componentSeq += 1;
+    return {
+      id: `rf_component_${Date.now()}_${componentSeq}`,
+      name: `电阻段 ${index}`,
+      method: 'geometry',
+      material: 'copper',
+      lengthMm: 100,
+      widthMm: 20,
+      heightMm: 1,
+      temperatureC: 20,
+      fixedValue: 0.3,
+      fixedUnit: 'mohm',
+      quantity: 1,
+      quantityRelation: 'series',
+      ...overrides,
+    };
+  }
+
+  function defaultBatteryState() {
+    return {
+      voltageV: 400,
+      resistanceMode: 'segments',
+      directResistance: 30,
+      directUnit: 'mohm',
+      displayUnit: 'mohm',
+      expression: 'R1 + R2 + R3',
+      components: [
+        newComponent(1, { name: '电芯内阻', method: 'fixed', fixedValue: 0.3, fixedUnit: 'mohm', quantity: 96, quantityRelation: 'series' }),
+        newComponent(2, { name: '模组巴片', lengthMm: 80, widthMm: 20, heightMm: 1, quantity: 12, quantityRelation: 'series' }),
+        newComponent(3, { name: 'Pack 主母排', lengthMm: 500, widthMm: 30, heightMm: 3, quantity: 2, quantityRelation: 'series' }),
+      ],
+    };
+  }
+
+  function materialOptions(selected) {
+    return Object.entries(MATERIALS).map(([key, item]) => `<option value="${key}" ${key === selected ? 'selected' : ''}>${item.name}</option>`).join('');
+  }
+
+  function unitOptions(selected) {
+    return Object.entries(RESISTANCE_UNITS).map(([key, item]) => `<option value="${key}" ${key === selected ? 'selected' : ''}>${item.label}</option>`).join('');
+  }
+
+  function componentRow(item, index) {
+    const geometryInput = item.method === 'geometry';
+    return `<div class="rf-res-row" data-component-id="${esc(item.id)}">
+      <div class="rf-res-ref"><b>R${index + 1}</b></div>
+      <input data-field="name" value="${esc(item.name)}" aria-label="R${index + 1} 名称">
+      <select data-field="method" aria-label="电阻取得方式"><option value="geometry" ${geometryInput ? 'selected' : ''}>尺寸计算</option><option value="fixed" ${!geometryInput ? 'selected' : ''}>定值电阻</option></select>
+      <div class="rf-res-source">${geometryInput
+        ? `<select data-field="material" aria-label="材质">${materialOptions(item.material)}</select>`
+        : `<div class="input-row"><input data-field="fixedValue" type="number" min="0" step="any" value="${esc(item.fixedValue)}" aria-label="定值电阻"><select data-field="fixedUnit">${unitOptions(item.fixedUnit)}</select></div>`}</div>
+      <input data-field="lengthMm" type="number" min="0" step="any" value="${esc(item.lengthMm)}" aria-label="长度 mm" ${geometryInput ? '' : 'disabled'}>
+      <input data-field="widthMm" type="number" min="0" step="any" value="${esc(item.widthMm)}" aria-label="宽度 mm" ${geometryInput ? '' : 'disabled'}>
+      <input data-field="heightMm" type="number" min="0" step="any" value="${esc(item.heightMm)}" aria-label="厚度 mm" ${geometryInput ? '' : 'disabled'}>
+      <input data-field="temperatureC" type="number" step="any" value="${esc(item.temperatureC)}" aria-label="温度 °C" ${geometryInput ? '' : 'disabled'}>
+      <input data-field="quantity" type="number" min="1" step="1" value="${esc(item.quantity)}" aria-label="数量">
+      <select data-field="quantityRelation" aria-label="同规格关系"><option value="series" ${item.quantityRelation === 'series' ? 'selected' : ''}>串联 nR</option><option value="parallel" ${item.quantityRelation === 'parallel' ? 'selected' : ''}>并联 R/n</option></select>
+      <button type="button" class="row-del" data-delete-component="${esc(item.id)}" ${batteryState.components.length === 1 ? 'disabled' : ''}>✕</button>
+    </div>`;
+  }
+
+  function renderModule(host) {
+    hostRef = host;
+    batteryState = defaultBatteryState();
+    curveSeq = 0;
+    colorIdx = 2;
+    host.innerHTML = `<style>${moduleStyle()}</style>
+      <section class="panel rf-toolbar">
+        <div><h3>电池包外短与保护配合校核</h3><p>先计算电池包等效内阻和最大外短电流，再用厂家时间-电流曲线进行人工配合分析。</p></div>
+        <div class="rf-actions"><button type="button" class="btn" id="cc-export">导出 JSON</button><label class="btn rf-file-btn">导入 JSON<input type="file" id="cc-file" accept=".json,application/json"></label><button type="button" class="btn btn-primary" id="rf-export-pdf">打印 / 导出 PDF</button></div>
+      </section>
+
+      <section class="panel">
+        <h3 class="panel-title"><span class="dot"></span>① 电池包信息与最大外短电流</h3>
+        <div class="rf-pack-settings">
+          <label><span>电池包电压</span><div class="input-row"><input id="rf-pack-voltage" type="number" min="0" step="any" value="${batteryState.voltageV}"><span class="unit">V</span></div></label>
+          <label><span>整包电阻取得方式</span><select id="rf-pack-mode"><option value="segments">导体段 / 电芯组合计算</option><option value="direct">直接输入整包定值电阻</option></select></label>
+          <label><span>结果显示单位</span><select id="rf-display-unit">${unitOptions(batteryState.displayUnit)}</select></label>
+        </div>
+        <div id="rf-direct-box" class="rf-direct-box" hidden><label>整包定值电阻</label><div class="input-row"><input id="rf-direct-resistance" type="number" min="0" step="any" value="${batteryState.directResistance}"><select id="rf-direct-unit">${unitOptions(batteryState.directUnit)}</select></div></div>
+        <div id="rf-segment-box">
+          <div class="rf-section-head"><div><h4>电阻组成</h4><p>尺寸计算采用 R=ρ(T)L/A；电芯内阻、接触电阻等可选择“定值电阻”。</p></div><button type="button" class="btn" id="rf-add-component">＋ 添加电阻段</button></div>
+          <div class="rf-res-scroll"><div class="rf-res-head"><span>引用</span><span>名称</span><span>方式</span><span>材质 / 定值</span><span>长度/mm</span><span>宽/mm</span><span>厚/mm</span><span>温度/°C</span><span>数量</span><span>同规格关系</span><span></span></div><div id="rf-battery-rows"></div></div>
+          <div class="field rf-expression"><label>组合表达式 <span class="hint">+ 表示串联，// 表示并联，可使用括号</span></label><input id="rf-expression" value="${esc(batteryState.expression)}" spellcheck="false"><div class="btn-row"><button type="button" class="btn btn-ghost btn-sm" id="rf-all-series">全部串联</button><button type="button" class="btn btn-ghost btn-sm" id="rf-all-parallel">全部并联</button></div></div>
+        </div>
+        <div id="rf-battery-result"></div>
+      </section>
+
+      <section class="panel">
+        <h3 class="panel-title"><span class="dot"></span>② 数据点曲线表</h3>
+        <p class="rf-muted">为保险丝、继电器/接触器、电芯、线束等输入厂家数据点 <b>(电流 I/A，动作或耐受时间 t/s)</b>，同一曲线建议不少于 2 个点。</p>
+        <div id="cc-curves"></div>
+        <div class="btn-row"><button class="btn btn-ghost" id="cc-add-curve">＋ 添加曲线</button><button class="btn btn-primary" id="cc-gen">生成图表</button></div>
+      </section>
+
+      <section class="panel">
+        <h3 class="panel-title"><span class="dot"></span>③ 保护配合曲线与校核分析</h3>
+        <div class="chart-title-input"><label>图表名称</label><input id="cc-title" type="text" value="保护配合曲线（时间-电流）"></div>
+        <div class="range-bar"><div class="range-item"><label>X 电流范围 (A)</label><input id="cc-xmin" type="number" step="any" placeholder="自动"><span class="range-sep">～</span><input id="cc-xmax" type="number" step="any" placeholder="自动"></div><div class="range-item"><label>Y 时间范围 (s)</label><input id="cc-ymin" type="number" step="any" placeholder="自动"><span class="range-sep">～</span><input id="cc-ymax" type="number" step="any" placeholder="自动"></div><button class="btn btn-ghost btn-sm" id="cc-reset-range" type="button">重置为自动</button></div>
+        <div id="cc-chart"></div>
+        <label class="rf-analysis"><span>校核分析（用户填写）</span><textarea id="rf-analysis" rows="7" placeholder="请结合曲线填写：最大外短电流位置、保险丝动作时间、接触器/线束/电芯耐受裕量、选择性保护关系、异常风险及最终意见。"></textarea><small>此内容将随 JSON 保存，并写入 PDF 校核报告。</small></label>
+      </section>
+      <section class="rf-report-shell" id="rf-report-shell"></section>`;
+
+    renderBatteryRows();
+    addCurve('继电器触点耐受', PALETTE[1], [[300, 10], [600, 2], [1000, 0.5], [2000, 0.1], [5000, 0.02]]);
+    addCurve('保险丝熔断', PALETTE[0], [[300, 30], [600, 5], [1000, 1], [2000, 0.2], [5000, 0.03]]);
+    addCurve('线束发烟极限', PALETTE[2], [[200, 100], [500, 20], [1000, 5], [3000, 0.8], [8000, 0.1]]);
+    addCurve('电芯热失控边界', PALETTE[3], [[500, 300], [1000, 80], [3000, 15], [8000, 2], [15000, 0.5]]);
+    bindStaticEvents();
+    updateBattery();
+  }
+
+  function bindStaticEvents() {
+    hostRef.querySelector('#rf-pack-voltage').addEventListener('input', (event) => { batteryState.voltageV = event.target.value; updateBattery(); });
+    hostRef.querySelector('#rf-pack-mode').addEventListener('change', (event) => { batteryState.resistanceMode = event.target.value; toggleBatteryMode(); updateBattery(); });
+    hostRef.querySelector('#rf-display-unit').addEventListener('change', (event) => { batteryState.displayUnit = event.target.value; updateBattery(); });
+    hostRef.querySelector('#rf-direct-resistance').addEventListener('input', (event) => { batteryState.directResistance = event.target.value; updateBattery(); });
+    hostRef.querySelector('#rf-direct-unit').addEventListener('change', (event) => { batteryState.directUnit = event.target.value; updateBattery(); });
+    hostRef.querySelector('#rf-expression').addEventListener('input', (event) => { batteryState.expression = event.target.value; updateBattery(); });
+    hostRef.querySelector('#rf-add-component').addEventListener('click', () => { batteryState.components.push(newComponent(batteryState.components.length + 1)); batteryState.expression = allExpression('+'); renderBatteryRows(); updateBattery(); });
+    hostRef.querySelector('#rf-all-series').addEventListener('click', () => setAllExpression('+'));
+    hostRef.querySelector('#rf-all-parallel').addEventListener('click', () => setAllExpression('//'));
+    hostRef.querySelector('#cc-add-curve').addEventListener('click', () => addCurve(`曲线 ${curveSeq}`, nextColor()));
+    hostRef.querySelector('#cc-gen').addEventListener('click', renderChart);
+    ['cc-xmin', 'cc-xmax', 'cc-ymin', 'cc-ymax', 'cc-title'].forEach((id) => hostRef.querySelector(`#${id}`).addEventListener('input', renderChart));
+    hostRef.querySelector('#cc-reset-range').addEventListener('click', () => { ['cc-xmin', 'cc-xmax', 'cc-ymin', 'cc-ymax'].forEach((id) => { hostRef.querySelector(`#${id}`).value = ''; }); renderChart(); });
+    hostRef.querySelector('#cc-export').addEventListener('click', exportData);
+    hostRef.querySelector('#cc-file').addEventListener('change', (event) => { importData(event.target.files?.[0]); event.target.value = ''; });
+    hostRef.querySelector('#rf-export-pdf').addEventListener('click', exportPdf);
+  }
+
+  function toggleBatteryMode() {
+    hostRef.querySelector('#rf-direct-box').hidden = batteryState.resistanceMode !== 'direct';
+    hostRef.querySelector('#rf-segment-box').hidden = batteryState.resistanceMode !== 'segments';
+  }
+
+  function renderBatteryRows() {
+    const rows = hostRef.querySelector('#rf-battery-rows');
+    rows.innerHTML = batteryState.components.map(componentRow).join('');
+    hostRef.querySelector('#rf-expression').value = batteryState.expression;
+    rows.querySelectorAll('[data-component-id] input[data-field], [data-component-id] select[data-field]').forEach((control) => control.addEventListener('input', handleComponentInput));
+    rows.querySelectorAll('[data-delete-component]').forEach((button) => button.addEventListener('click', () => {
+      if (batteryState.components.length <= 1) return;
+      batteryState.components = batteryState.components.filter((item) => item.id !== button.dataset.deleteComponent);
+      batteryState.expression = allExpression('+');
+      renderBatteryRows();
+      updateBattery();
+    }));
+  }
+
+  function handleComponentInput(event) {
+    const row = event.target.closest('[data-component-id]');
+    const item = batteryState.components.find((entry) => entry.id === row.dataset.componentId);
+    if (!item) return;
+    item[event.target.dataset.field] = event.target.value;
+    if (event.target.dataset.field === 'method') renderBatteryRows();
+    updateBattery();
+  }
+
+  function allExpression(operator) { return batteryState.components.map((item, index) => `R${index + 1}`).join(` ${operator} `); }
+  function setAllExpression(operator) { batteryState.expression = allExpression(operator); hostRef.querySelector('#rf-expression').value = batteryState.expression; updateBattery(); }
+
+  function tokenize(expression) {
+    const tokens = [];
+    let index = 0;
+    while (index < expression.length) {
+      const char = expression[index];
+      if (/\s/.test(char)) { index += 1; continue; }
+      if (char === '+' || char === '(' || char === ')') { tokens.push(char); index += 1; continue; }
+      if (char === '/' && expression[index + 1] === '/') { tokens.push('//'); index += 2; continue; }
+      const number = expression.slice(index).match(/^\d+(?:\.\d+)?/);
+      if (number) { tokens.push(Number(number[0])); index += number[0].length; continue; }
+      const reference = expression.slice(index).match(/^R\s*(\d+)/i);
+      if (reference) { tokens.push(`R${Number(reference[1])}`); index += reference[0].length; continue; }
+      throw new Error(`无法识别的字符“${char}”`);
+    }
+    return tokens;
+  }
+
+  function evaluateExpression(tokens, resistanceMap) {
+    let position = 0;
+    function parseTerm() {
+      const token = tokens[position];
+      if (token === '(') { position += 1; const value = parseExpression(); if (tokens[position] !== ')') throw new Error('缺少右括号 )'); position += 1; return value; }
+      if (typeof token === 'number') { position += 1; return token; }
+      if (typeof token === 'string' && /^R\d+$/.test(token)) { position += 1; const number = Number(token.slice(1)); if (!(number in resistanceMap)) throw new Error(`电阻段 R${number} 未定义`); return resistanceMap[number]; }
+      throw new Error(`表达式错误（${token == null ? '末尾' : token}附近）`);
+    }
+    function parseExpression() {
+      let value = parseTerm();
+      while (position < tokens.length && ['+', '//'].includes(tokens[position])) { const operator = tokens[position++]; const right = parseTerm(); value = operator === '+' ? value + right : (value * right) / (value + right); }
+      return value;
+    }
+    const result = parseExpression();
+    if (position !== tokens.length) throw new Error('表达式存在多余内容');
+    return result;
+  }
+
+  function computeBattery() {
+    const voltageV = E.parseNum(batteryState.voltageV);
+    if (voltageV == null || voltageV <= 0) throw new Error('电池包电压必须大于 0');
+    if (batteryState.resistanceMode === 'direct') {
+      const input = E.parseNum(batteryState.directResistance);
+      if (input == null || input <= 0) throw new Error('整包定值电阻必须大于 0');
+      const totalResistance = input / RESISTANCE_UNITS[batteryState.directUnit].factor;
+      return { voltageV, totalResistance, shortCircuitCurrent: voltageV / totalResistance, segments: [], mode: 'direct' };
+    }
+    const resistanceMap = {};
+    const segments = batteryState.components.map((item, index) => {
+      const quantity = E.parseNum(item.quantity);
+      if (quantity == null || quantity < 1 || !Number.isInteger(quantity)) throw new Error(`R${index + 1} 数量必须是大于等于 1 的整数`);
+      let singleResistance;
+      let detail;
+      if (item.method === 'fixed') {
+        const value = E.parseNum(item.fixedValue);
+        if (value == null || value <= 0) throw new Error(`R${index + 1} 定值电阻必须大于 0`);
+        singleResistance = value / RESISTANCE_UNITS[item.fixedUnit].factor;
+        detail = `定值 ${value} ${RESISTANCE_UNITS[item.fixedUnit].label}`;
+      } else {
+        const material = MATERIALS[item.material];
+        const lengthMm = E.parseNum(item.lengthMm);
+        const widthMm = E.parseNum(item.widthMm);
+        const heightMm = E.parseNum(item.heightMm);
+        const temperatureC = E.parseNum(item.temperatureC);
+        if (!material || [lengthMm, widthMm, heightMm, temperatureC].some((value) => value == null)) throw new Error(`R${index + 1} 尺寸参数未填写完整`);
+        if (lengthMm <= 0 || widthMm <= 0 || heightMm <= 0) throw new Error(`R${index + 1} 长度、宽度和厚度必须大于 0`);
+        const rhoT = material.rho * (1 + material.alpha * (temperatureC - 20));
+        if (rhoT <= 0) throw new Error(`R${index + 1} 温度修正后的电阻率无效`);
+        singleResistance = rhoT * (lengthMm / 1000) / ((widthMm * heightMm) / 1e6);
+        detail = `${material.name}；${lengthMm}×${widthMm}×${heightMm} mm；${temperatureC} °C`;
+      }
+      const effectiveResistance = item.quantityRelation === 'series' ? singleResistance * quantity : singleResistance / quantity;
+      resistanceMap[index + 1] = effectiveResistance;
+      return { index: index + 1, item, quantity, singleResistance, effectiveResistance, detail };
+    });
+    const expression = String(batteryState.expression || '').trim();
+    if (!expression) throw new Error('请填写电阻段组合表达式');
+    const totalResistance = evaluateExpression(tokenize(expression), resistanceMap);
+    if (!Number.isFinite(totalResistance) || totalResistance <= 0) throw new Error('整包组合电阻无效');
+    return { voltageV, totalResistance, shortCircuitCurrent: voltageV / totalResistance, segments, mode: 'segments' };
+  }
+
+  function resistanceText(value, unitKey = batteryState.displayUnit) { const unit = RESISTANCE_UNITS[unitKey]; return `${E.fmtExact(value * unit.factor, 6)} ${unit.label}`; }
+
+  function updateBattery() {
+    const box = hostRef.querySelector('#rf-battery-result');
+    toggleBatteryMode();
+    try {
+      lastBatteryResult = computeBattery();
+      const rows = lastBatteryResult.segments.length ? `<table class="param-table rf-result-table"><thead><tr><th>引用 / 名称</th><th>取得方式</th><th>单个电阻</th><th>数量关系</th><th>折算电阻</th></tr></thead><tbody>${lastBatteryResult.segments.map((segment) => `<tr><td><b>R${segment.index}</b><br>${esc(segment.item.name)}</td><td>${esc(segment.detail)}</td><td>${resistanceText(segment.singleResistance)}</td><td>${segment.quantity} 个，${segment.item.quantityRelation === 'series' ? '串联 nR' : '并联 R/n'}</td><td><b>${resistanceText(segment.effectiveResistance)}</b></td></tr>`).join('')}</tbody></table>` : '';
+      box.innerHTML = `${rows}<div class="result-grid"><div class="result-card"><div class="k">电池包电压</div><div class="v">${E.fmtExact(lastBatteryResult.voltageV, 6)}<small> V</small></div></div><div class="result-card"><div class="k">整包等效电阻</div><div class="v">${resistanceText(lastBatteryResult.totalResistance)}</div></div><div class="result-card"><div class="k">最大外短电流 I<sub>sc,max</sub></div><div class="v">${E.fmtExact(lastBatteryResult.shortCircuitCurrent, 3)}<small> A</small></div></div></div><div class="status-banner warn"><b>计算边界：</b>I<sub>sc,max</sub>=U<sub>pack</sub>/R<sub>pack</sub>。该值未计电芯电压塌陷、电弧阻抗、SOC/温度离散及动态极化，仅作为理想初始外短电流上限参考。</div>`;
+    } catch (error) {
+      lastBatteryResult = null;
+      box.innerHTML = `<div class="status-banner err">${esc(error.message)}</div>`;
+    }
+    if (hostRef.querySelector('#cc-chart')) renderChart();
+  }
+
   function nextColor() { return PALETTE[colorIdx++ % PALETTE.length]; }
 
-  /** 新增一条曲线块 */
   function addCurve(name, color, points) {
-    const wrap = document.getElementById('cc-curves');
+    const wrap = hostRef.querySelector('#cc-curves');
     const div = document.createElement('div');
     div.className = 'curve-block';
     div.dataset.seq = curveSeq++;
-
-    const paletteOpts = PALETTE.map((c) => `<option value="${c}" ${c === color ? 'selected' : ''} style="background:${c}">${c}</option>`).join('');
-
-    div.innerHTML = `
-      <div class="curve-head">
-        <input type="text" class="cc-name" value="${E.escapeHtml(name)}" placeholder="设备 / 曲线名称">
-        <select class="cc-color">${paletteOpts}</select>
-        <span class="curve-point-count">0 点</span>
-        <button class="btn btn-ghost btn-sm btn-add-pt" type="button" title="手动添加一个数据点">＋ 点</button>
-        <button class="btn btn-ghost btn-sm btn-paste" type="button" title="从 Excel 复制两列数据直接粘贴">批量粘贴</button>
-        <button class="btn btn-ghost btn-sm btn-del" type="button" title="删除该曲线">删除</button>
-      </div>
-      <div class="curve-points"></div>
-      <div class="paste-box" style="display:none">
-        <div class="paste-actions">
-          <span class="paste-hint">从 Excel 选中两列（电流 I / 时间 t）复制，粘贴到下方，点"导入"即可。支持制表符 / 逗号分隔，每行一个点，首行表头自动忽略。</span>
-          <button class="btn btn-ghost btn-sm" data-mode="overwrite" type="button">导入（覆盖）</button>
-          <button class="btn btn-ghost btn-sm" data-mode="append" type="button">导入（追加）</button>
-        </div>
-        <textarea class="paste-ta" rows="5" placeholder="示例（从 Excel 复制两列粘贴）：&#10;20&#9;1&#10;40&#9;0.25&#10;100&#9;0.04"></textarea>
-      </div>
-    `;
-
+    const paletteOptions = PALETTE.map((item) => `<option value="${item}" ${item === color ? 'selected' : ''} style="background:${item}">${item}</option>`).join('');
+    div.innerHTML = `<div class="curve-head"><input type="text" class="cc-name" value="${esc(name)}" placeholder="设备 / 曲线名称"><select class="cc-color">${paletteOptions}</select><span class="curve-point-count">0 点</span><button class="btn btn-ghost btn-sm btn-add-pt" type="button">＋ 点</button><button class="btn btn-ghost btn-sm btn-paste" type="button">批量粘贴</button><button class="btn btn-ghost btn-sm btn-del" type="button">删除</button></div><div class="curve-points"></div><div class="paste-box" style="display:none"><div class="paste-actions"><span class="paste-hint">从 Excel 复制电流 I 与时间 t 两列；支持制表符、逗号或空格分隔。</span><button class="btn btn-ghost btn-sm" data-mode="overwrite" type="button">导入（覆盖）</button><button class="btn btn-ghost btn-sm" data-mode="append" type="button">导入（追加）</button></div><textarea class="paste-ta" rows="5" placeholder="20&#9;1&#10;40&#9;0.25&#10;100&#9;0.04"></textarea></div>`;
     const pointsBox = div.querySelector('.curve-points');
-    (points || []).forEach(([I, t]) => addPoint(pointsBox, I, t));
-    if (!points || !points.length) addPoint(pointsBox, 10, 1);
-
+    (points || []).forEach(([current, time]) => addPoint(pointsBox, current, time));
+    if (!points?.length) addPoint(pointsBox, 10, 1);
     div.querySelector('.btn-add-pt').addEventListener('click', () => addPoint(pointsBox, '', ''));
-    div.querySelector('.btn-paste').addEventListener('click', () => {
-      const box = div.querySelector('.paste-box');
-      box.style.display = box.style.display === 'none' ? 'block' : 'none';
-    });
-    div.querySelector('.btn-del').addEventListener('click', () => {
-      const others = wrap.querySelectorAll('.curve-block');
-      if (others.length > 1) { div.remove(); renderChart(); }
-      else div.querySelector('.cc-name').value = '';
-    });
-    div.querySelectorAll('.paste-box .btn').forEach((b) => {
-      b.addEventListener('click', () => {
-        const pts = parsePasted(div.querySelector('.paste-ta').value);
-        if (!pts.length) return;
-        if (b.dataset.mode === 'overwrite') pointsBox.innerHTML = '';
-        pts.forEach(([I, t]) => addPoint(pointsBox, I, t));
-        div.querySelector('.paste-ta').value = '';
-        renderChart();
-      });
-    });
-
+    div.querySelector('.btn-paste').addEventListener('click', () => { const box = div.querySelector('.paste-box'); box.style.display = box.style.display === 'none' ? 'block' : 'none'; });
+    div.querySelector('.btn-del').addEventListener('click', () => { if (wrap.querySelectorAll('.curve-block').length > 1) div.remove(); else div.querySelector('.cc-name').value = ''; renderChart(); });
+    div.querySelectorAll('.paste-box .btn').forEach((button) => button.addEventListener('click', () => { const parsed = parsePasted(div.querySelector('.paste-ta').value); if (!parsed.length) return; if (button.dataset.mode === 'overwrite') pointsBox.innerHTML = ''; parsed.forEach(([current, time]) => addPoint(pointsBox, current, time)); div.querySelector('.paste-ta').value = ''; renderChart(); }));
+    div.querySelectorAll('.cc-name,.cc-color').forEach((control) => control.addEventListener('input', renderChart));
     wrap.appendChild(div);
   }
 
-  /** 解析从 Excel / CSV 复制的两列文本为数据点数组 [[I,t],...]，自动忽略非数值表头行 */
   function parsePasted(text) {
-    const pts = [];
+    const points = [];
     String(text).split(/\r?\n/).forEach((line) => {
-      const s = line.trim();
-      if (!s) return;
-      let parts;
-      if (s.indexOf('\t') !== -1) parts = s.split('\t');
-      else if (/[,，;；]/.test(s)) parts = s.split(/[,，;；]/);
-      else parts = s.split(/\s+/);
-      parts = parts.map((p) => p.trim()).filter((p) => p !== '');
-      if (parts.length < 2) return;
-      const I = E.parseNum(parts[0]);
-      const t = E.parseNum(parts[1]);
-      if (I != null && t != null && I > 0 && t > 0) pts.push([I, t]);
+      const value = line.trim();
+      if (!value) return;
+      const parts = (value.includes('\t') ? value.split('\t') : /[,，;；]/.test(value) ? value.split(/[,，;；]/) : value.split(/\s+/)).map((item) => item.trim()).filter(Boolean);
+      const current = E.parseNum(parts[0]);
+      const time = E.parseNum(parts[1]);
+      if (current != null && time != null && current > 0 && time > 0) points.push([current, time]);
     });
-    return pts;
+    return points;
   }
 
-  /** 新增一个数据点行 (I, t) */
-  function addPoint(pointsBox, I, t) {
+  function addPoint(pointsBox, current, time) {
     const row = document.createElement('div');
     row.className = 'pt-row';
-    row.innerHTML = `
-      <input type="number" class="pt-i" value="${I === '' ? '' : E.fmtExact(I)}" placeholder="电流 I (A)" step="any" min="0">
-      <input type="number" class="pt-t" value="${t === '' ? '' : E.fmtExact(t)}" placeholder="时间 t (s)" step="any" min="0">
-      <button class="pt-del" type="button" title="删除该点">✕</button>
-    `;
-    row.querySelector('.pt-del').addEventListener('click', () => {
-      if (pointsBox.children.length > 1) row.remove();
-      else { row.querySelector('.pt-i').value = ''; row.querySelector('.pt-t').value = ''; }
-      updateCount(pointsBox);
-    });
+    row.innerHTML = `<input type="number" class="pt-i" value="${current === '' ? '' : E.fmtExact(current)}" placeholder="电流 I (A)" step="any" min="0"><input type="number" class="pt-t" value="${time === '' ? '' : E.fmtExact(time)}" placeholder="时间 t (s)" step="any" min="0"><button class="pt-del" type="button">✕</button>`;
+    row.querySelector('.pt-del').addEventListener('click', () => { if (pointsBox.children.length > 1) row.remove(); else { row.querySelector('.pt-i').value = ''; row.querySelector('.pt-t').value = ''; } updateCount(pointsBox); renderChart(); });
+    row.querySelectorAll('input').forEach((input) => input.addEventListener('input', renderChart));
     pointsBox.appendChild(row);
     updateCount(pointsBox);
   }
 
-  function updateCount(pointsBox) {
-    const block = pointsBox.closest('.curve-block');
-    const n = pointsBox.querySelectorAll('.pt-row').length;
-    const cnt = block.querySelector('.curve-point-count');
-    if (cnt) cnt.textContent = n + ' 点';
-  }
+  function updateCount(pointsBox) { const count = pointsBox.closest('.curve-block').querySelector('.curve-point-count'); if (count) count.textContent = `${pointsBox.querySelectorAll('.pt-row').length} 点`; }
 
-  /** 收集所有曲线与数据点 */
   function collectCurves() {
-    const out = [];
-    document.querySelectorAll('#cc-curves .curve-block').forEach((block) => {
-      const name = block.querySelector('.cc-name').value.trim();
-      const color = block.querySelector('.cc-color').value;
-      const points = [];
-      block.querySelectorAll('.pt-row').forEach((row) => {
-        const I = E.parseNum(row.querySelector('.pt-i').value);
-        const t = E.parseNum(row.querySelector('.pt-t').value);
-        if (I != null && t != null && I > 0 && t > 0) points.push([I, t]);
-      });
-      out.push({ name: name || '未命名曲线', color, points });
-    });
-    return out;
+    return Array.from(hostRef.querySelectorAll('#cc-curves .curve-block')).map((block) => ({
+      name: block.querySelector('.cc-name').value.trim() || '未命名曲线',
+      color: block.querySelector('.cc-color').value,
+      points: Array.from(block.querySelectorAll('.pt-row')).map((row) => [E.parseNum(row.querySelector('.pt-i').value), E.parseNum(row.querySelector('.pt-t').value)]).filter(([current, time]) => current != null && time != null && current > 0 && time > 0),
+    }));
   }
 
-  /** 依据所有数据点生成图表 */
   function renderChart() {
-    const curves = collectCurves();
-    const chart = document.getElementById('cc-chart');
-    const valid = curves.filter((c) => c.points.length >= 1);
-
-    if (!valid.length) {
-      chart.innerHTML = '<div class="empty-tip">请在上方表格为至少一条曲线输入数据点。</div>';
-      return;
-    }
-
-    // 电池包最大短路电流（单一值 → X=A 竖直线）
-    const sc = E.parseNum(document.getElementById('cc-sc').value);
-    const scValid = sc != null && sc > 0;
-
-    // 计算坐标范围（覆盖所有点 + 短路电流线 + 留边）
-    let minX = Infinity, maxX = 0, minT = Infinity, maxT = 0;
-    valid.forEach((c) => c.points.forEach(([I, t]) => {
-      minX = Math.min(minX, I); maxX = Math.max(maxX, I);
-      minT = Math.min(minT, t); maxT = Math.max(maxT, t);
-    }));
-    if (scValid) maxX = Math.max(maxX, sc);
-    if (minX === maxX) { maxX = minX * 10; }
-    if (minT === maxT) { maxT = minT * 100; }
-    const xMinAuto = Math.pow(10, Math.floor(Math.log10(minX)) - 0.5);
-    const xMaxAuto = Math.pow(10, Math.ceil(Math.log10(maxX)) + 0.2);
-    const yMinAuto = Math.pow(10, Math.floor(Math.log10(minT)) - 0.3);
-    const yMaxAuto = Math.pow(10, Math.ceil(Math.log10(maxT)) + 0.3);
-
-    // 用户自定义范围（留空用自动；填反自动交换）
-    const rU = {
-      xmin: E.parseNum(document.getElementById('cc-xmin').value),
-      xmax: E.parseNum(document.getElementById('cc-xmax').value),
-      ymin: E.parseNum(document.getElementById('cc-ymin').value),
-      ymax: E.parseNum(document.getElementById('cc-ymax').value),
-    };
-    const pick = (a, auto) => (a != null && a > 0 ? a : auto);
-    let xMin = pick(rU.xmin, xMinAuto), xMax = pick(rU.xmax, xMaxAuto);
-    let yMin = pick(rU.ymin, yMinAuto), yMax = pick(rU.ymax, yMaxAuto);
-    if (xMin >= xMax) { const t = xMin; xMin = xMax; xMax = t; }
-    if (yMin >= yMax) { const t = yMin; yMin = yMax; yMax = t; }
-
-    const series = valid.map((c) => ({
-      name: `${c.name}（${c.points.length} 点）`,
-      color: c.color,
-      points: c.points,
-    }));
-
-    // 电池包最大短路电流竖直线
-    const vLines = [];
-    if (scValid) {
-      vLines.push({ x: sc, color: '#64748b', label: '电池包最大短路电流 ' + E.fmt(sc) + 'A', dash: true });
-    }
-
-    chart.innerHTML = T.chart({
-      width: 780,
-      height: 460,
-      title: document.getElementById('cc-title').value.trim() || undefined,
-      x: { min: xMin, max: xMax, label: '电流 I', unit: 'A' },
-      y: { min: yMin, max: yMax, label: '时间 t', unit: 's' },
-      series,
-      vLines,
-      note: `
-        <strong>说明：</strong>图中曲线由你输入的数据点连线而成（对数刻度）。曲线越低，动作越快、越先脱扣。
-        灰色竖线为<b>电池包最大短路电流</b>（X = ${scValid ? E.fmt(sc) + 'A' : '未设置'}）。
-        同一故障电流下，应保证<b>下级设备（如保险丝）曲线位于上级设备（如接触器）曲线之下</b>，且各保护曲线应在电芯热失控、线束发烟曲线之上，实现选择性保护。
-        两点之间为线性对数插值，更精确请录入更多数据点。X/Y 轴范围可在上方自定义，留空自动。
-      `,
-    });
+    const chart = hostRef?.querySelector('#cc-chart');
+    if (!chart) return;
+    const valid = collectCurves().filter((curve) => curve.points.length);
+    if (!valid.length) { chart.innerHTML = '<div class="empty-tip">请至少输入一条有效曲线。</div>'; return; }
+    let minX = Infinity, maxX = 0, minY = Infinity, maxY = 0;
+    valid.forEach((curve) => curve.points.forEach(([current, time]) => { minX = Math.min(minX, current); maxX = Math.max(maxX, current); minY = Math.min(minY, time); maxY = Math.max(maxY, time); }));
+    if (lastBatteryResult) maxX = Math.max(maxX, lastBatteryResult.shortCircuitCurrent);
+    if (minX === maxX) maxX = minX * 10;
+    if (minY === maxY) maxY = minY * 100;
+    const ranges = { xmin: E.parseNum(hostRef.querySelector('#cc-xmin').value), xmax: E.parseNum(hostRef.querySelector('#cc-xmax').value), ymin: E.parseNum(hostRef.querySelector('#cc-ymin').value), ymax: E.parseNum(hostRef.querySelector('#cc-ymax').value) };
+    let xMin = ranges.xmin > 0 ? ranges.xmin : Math.pow(10, Math.floor(Math.log10(minX)) - 0.4);
+    let xMax = ranges.xmax > 0 ? ranges.xmax : Math.pow(10, Math.ceil(Math.log10(maxX)) + 0.2);
+    let yMin = ranges.ymin > 0 ? ranges.ymin : Math.pow(10, Math.floor(Math.log10(minY)) - 0.3);
+    let yMax = ranges.ymax > 0 ? ranges.ymax : Math.pow(10, Math.ceil(Math.log10(maxY)) + 0.3);
+    if (xMin >= xMax) [xMin, xMax] = [xMax, xMin];
+    if (yMin >= yMax) [yMin, yMax] = [yMax, yMin];
+    const vLines = lastBatteryResult ? [{ x: lastBatteryResult.shortCircuitCurrent, color: '#64748b', label: `最大外短电流 ${E.fmtExact(lastBatteryResult.shortCircuitCurrent, 1)} A`, dash: true }] : [];
+    chart.innerHTML = T.chart({ width: 780, height: 460, title: hostRef.querySelector('#cc-title').value.trim() || undefined, x: { min: xMin, max: xMax, label: '电流 I', unit: 'A' }, y: { min: yMin, max: yMax, label: '时间 t', unit: 's' }, series: valid, vLines, note: '<strong>判读原则：</strong>同一故障电流下，保护器件动作曲线应早于被保护件损伤边界，并结合制造离散、环境温度、老化、分断能力和系统控制策略保留裕量。灰色竖线为计算得到的理想最大外短电流。' });
   }
 
-  /** 按额定电流估算参考曲线并填入数据表 */
-  function fillReferenceToTable() {
-    const relayIn = E.parseNum(document.getElementById('rf-relay-in').value);
-    const fuseIn = E.parseNum(document.getElementById('rf-fuse-in').value);
-    const fuseType = document.getElementById('rf-fuse-type').value;
-    if (relayIn == null || fuseIn == null || relayIn <= 0 || fuseIn <= 0) {
-      document.getElementById('cc-chart').innerHTML =
-        '<div class="status-banner err">请先输入有效的继电器与保险丝额定电流。</div>';
-      return;
-    }
-
-    const FUSE_ANCHOR = { slow: 1, fast: 0.005 }; // 2×In 处熔断时间(s)
-    const Kfuse = FUSE_ANCHOR[fuseType] * Math.pow(2 * fuseIn, 2);
-    const Krelay = 1 * Math.pow(2 * relayIn, 2);
-
-    const sample = (start, K, n) => {
-      const end = Math.max(1000, start * 10);
-      const pts = [];
-      for (let i = 0; i <= n; i++) {
-        const I = start * Math.pow(end / start, i / n);
-        pts.push([I, K / (I * I)]);
-      }
-      return pts;
-    };
-
-    const wrap = document.getElementById('cc-curves');
-    wrap.innerHTML = '';
-    colorIdx = 2;
-    addCurve('保险丝 ' + (fuseType === 'slow' ? '慢断' : '快断') + ' ' + E.fmtExact(fuseIn) + 'A', PALETTE[0], sample(fuseIn, Kfuse, 14));
-    addCurve('继电器触点 ' + E.fmtExact(relayIn) + 'A', PALETTE[1], sample(relayIn, Krelay, 14));
-
-    renderChart();
-  }
-
-  /** 快速自动匹配的数值结论 */
-  function matchVerdict() {
-    const relayIn = E.parseNum(document.getElementById('rf-relay-in').value);
-    const fuseIn = E.parseNum(document.getElementById('rf-fuse-in').value);
-    const load = E.parseNum(document.getElementById('rf-load').value);
-    const fuseType = document.getElementById('rf-fuse-type').value;
-    const loadType = document.getElementById('rf-load-type').value;
-
-    const resultBox = document.getElementById('rf-result');
-    if (relayIn == null || fuseIn == null || load == null || relayIn <= 0 || fuseIn <= 0) {
-      resultBox.innerHTML = `<div class="status-banner err">请输入有效的额定电流与负载电流数值。</div>`;
-      resultBox.style.display = 'block';
-      return;
-    }
-
-    const checks = [];
-    const okList = [], warnList = [], errList = [];
-
-    const marginTable = {
-      resistive: { min: 1.10, note: '阻性负载浪涌小，裕量可取下限' },
-      motor: { min: 1.25, note: '电机启动电流大，需一定裕量' },
-      capacitive: { min: 1.50, note: '容性负载上电浪涌大，裕量宜取大' },
-      inrush: { min: 1.50, note: '高浪涌负载，建议选用慢断保险丝' },
-    };
-    const mt = marginTable[loadType] || marginTable.resistive;
-
-    const fuseLoadRatio = fuseIn / load;
-    const fuseRelayRatio = fuseIn / relayIn;
-    const relayLoadRatio = relayIn / load;
-
-    if (fuseIn < load) {
-      errList.push('保险丝额定电流（' + E.fmt(fuseIn) + ' A）小于负载电流（' + E.fmt(load) + ' A），正常工作时可能误熔断。');
-    } else if (fuseIn < load * mt.min) {
-      warnList.push('保险丝对负载电流的裕量偏小（比值 ' + fuseLoadRatio.toFixed(2) + '，推荐 ≥ ' + mt.min + '）。' + mt.note + '。');
-    } else {
-      okList.push('保险丝额定电流 ' + E.fmt(fuseIn) + ' A ≥ 负载电流 ' + E.fmt(load) + ' A × ' + mt.min + '，正常不会误熔断。');
-    }
-
-    if (fuseIn > relayIn) {
-      errList.push('保险丝额定电流（' + E.fmt(fuseIn) + ' A）大于继电器触点额定电流（' + E.fmt(relayIn) + ' A），故障时触点会先于保险丝损坏。');
-    } else if (fuseIn === relayIn) {
-      warnList.push('保险丝与继电器额定电流相同（' + E.fmt(fuseIn) + ' A），处于临界，建议保险丝略低于继电器。');
-    } else {
-      okList.push('保险丝额定电流 ' + E.fmt(fuseIn) + ' A ≤ 继电器触点额定电流 ' + E.fmt(relayIn) + ' A，故障时保险丝先断，可保护触点。');
-    }
-
-    if (relayIn < load) {
-      errList.push('继电器触点额定电流（' + E.fmt(relayIn) + ' A）小于负载电流（' + E.fmt(load) + ' A），触点无法长期承载。');
-    } else if (relayIn < load * mt.min) {
-      warnList.push('继电器触点对负载的裕量偏小（比值 ' + relayLoadRatio.toFixed(2) + '，推荐 ≥ ' + mt.min + '）。' + mt.note + '。');
-    } else {
-      okList.push('继电器触点额定电流 ' + E.fmt(relayIn) + ' A ≥ 负载电流 ' + E.fmt(load) + ' A × ' + mt.min + '，触点承载安全。');
-    }
-
-    if (loadType === 'inrush' && fuseType === 'fast') {
-      warnList.push('高浪涌负载搭配快断保险丝，可能在正常上电瞬间误熔断，建议改用慢断。');
-    }
-
-    let status, statusClass;
-    if (errList.length) { status = '匹配不协调：存在保护缺陷，请修正'; statusClass = 'err'; }
-    else if (warnList.length) { status = '匹配基本成立，但存在裕量问题'; statusClass = 'warn'; }
-    else { status = '匹配协调：继电器、保险丝、负载三者关系合理'; statusClass = 'ok'; }
-
-    const sections = (list, tag) =>
-      list.length ? `<div class="status-banner ${tag}">${list.map((s) => '• ' + s).join('<br>')}</div>` : '';
-
-    resultBox.innerHTML = `
-      <h3 class="panel-title"><span class="dot"></span>匹配结论</h3>
-      <div class="result-grid">
-        <div class="result-card"><div class="k">继电器 / 保险丝 电流比</div>
-          <div class="v">${E.fmt(fuseRelayRatio)}<small> In_fuse:In_relay</small></div></div>
-        <div class="result-card"><div class="k">保险丝 / 负载 电流比</div>
-          <div class="v">${E.fmt(fuseLoadRatio)}<small> In_fuse:I_load</small></div></div>
-        <div class="result-card"><div class="k">继电器 / 负载 电流比</div>
-          <div class="v">${E.fmt(relayLoadRatio)}<small> In_relay:I_load</small></div></div>
-      </div>
-      <div class="status-banner ${statusClass}">${status}</div>
-      ${sections(errList, 'err')}
-      ${sections(warnList, 'warn')}
-      ${sections(okList, 'ok')}
-    `;
-    resultBox.style.display = 'block';
-  }
-
-  /** 收集当前页全部校核数据 */
   function collectAll() {
-    return {
-      version: 1,
-      type: 'relay-fuse',
-      savedAt: new Date().toISOString(),
-      curves: collectCurves(),
-      title: document.getElementById('cc-title').value,
-      shortCircuit: E.parseNum(document.getElementById('cc-sc').value),
-      autoMatch: {
-        relayIn: E.parseNum(document.getElementById('rf-relay-in').value),
-        fuseIn: E.parseNum(document.getElementById('rf-fuse-in').value),
-        load: E.parseNum(document.getElementById('rf-load').value),
-        fuseType: document.getElementById('rf-fuse-type').value,
-        loadType: document.getElementById('rf-load-type').value,
-      },
-      range: {
-        xmin: document.getElementById('cc-xmin').value,
-        xmax: document.getElementById('cc-xmax').value,
-        ymin: document.getElementById('cc-ymin').value,
-        ymax: document.getElementById('cc-ymax').value,
-      },
-    };
+    return { version: 2, type: 'relay-fuse', savedAt: new Date().toISOString(), battery: clone(batteryState), curves: collectCurves(), title: hostRef.querySelector('#cc-title').value, analysis: hostRef.querySelector('#rf-analysis').value, range: { xmin: hostRef.querySelector('#cc-xmin').value, xmax: hostRef.querySelector('#cc-xmax').value, ymin: hostRef.querySelector('#cc-ymin').value, ymax: hostRef.querySelector('#cc-ymax').value } };
   }
 
-  /** 导出：下载 JSON 文件 */
-  function exportData() {
-    const data = collectAll();
-    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  function downloadBlob(blob, name) {
     const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const d = new Date();
-    const pad = (n) => String(n).padStart(2, '0');
-    a.href = url;
-    a.download = `保护配合校核_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = name;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
-  /** 导入：将文件数据恢复到页面并重绘 */
+  function exportData() { downloadBlob(new Blob([JSON.stringify(collectAll(), null, 2)], { type: 'application/json' }), `电池包保护配合校核_${new Date().toISOString().slice(0, 10)}.json`); }
+
   function importData(file) {
     if (!file) return;
     const reader = new FileReader();
-    reader.onload = (e) => {
-      try {
-        const data = JSON.parse(e.target.result);
-        if (!data || data.type !== 'relay-fuse') {
-          alert('不是有效的保护配合校核文件（type 不匹配）。');
-          return;
-        }
-        applyAll(data);
-      } catch (err) {
-        alert('导入失败：文件格式不正确。');
-      }
-    };
+    reader.onload = () => { try { const data = JSON.parse(reader.result); if (!data || data.type !== 'relay-fuse') throw new Error('type 不匹配'); applyAll(data); } catch (error) { window.alert(`导入失败：${error.message}`); } };
     reader.readAsText(file);
   }
 
-  /** 把数据应用到页面 */
-  function applyAll(data) {
-    // 重建曲线
-    const wrap = document.getElementById('cc-curves');
-    wrap.innerHTML = '';
-    colorIdx = 0;
-    const curves = (data.curves && data.curves.length) ? data.curves : [{ name: '曲线 1', color: PALETTE[0], points: [] }];
-    curves.forEach((c) => addCurve(c.name, c.color, c.points || []));
-
-    // 图表名称
-    if (data.title != null) document.getElementById('cc-title').value = data.title;
-
-    // 短路电流
-    if (data.shortCircuit != null) document.getElementById('cc-sc').value = data.shortCircuit;
-
-    // 自动匹配参数
-    const am = data.autoMatch || {};
-    if (am.relayIn != null) document.getElementById('rf-relay-in').value = am.relayIn;
-    if (am.fuseIn != null) document.getElementById('rf-fuse-in').value = am.fuseIn;
-    if (am.load != null) document.getElementById('rf-load').value = am.load;
-    if (am.fuseType) document.getElementById('rf-fuse-type').value = am.fuseType;
-    if (am.loadType) document.getElementById('rf-load-type').value = am.loadType;
-
-    // 坐标范围
-    const r = data.range || {};
-    document.getElementById('cc-xmin').value = r.xmin || '';
-    document.getElementById('cc-xmax').value = r.xmax || '';
-    document.getElementById('cc-ymin').value = r.ymin || '';
-    document.getElementById('cc-ymax').value = r.ymax || '';
-
-    renderChart();
-    matchVerdict();
+  function normalizeImportedBattery(source, legacyShortCircuit) {
+    if (source?.components?.length) { const next = { ...defaultBatteryState(), ...source }; next.components = source.components.map((item, index) => newComponent(index + 1, item)); return next; }
+    const next = defaultBatteryState();
+    if (legacyShortCircuit > 0) { next.resistanceMode = 'direct'; next.directUnit = 'mohm'; next.directResistance = next.voltageV / legacyShortCircuit * 1000; }
+    return next;
   }
+
+  function applyAll(data) {
+    batteryState = normalizeImportedBattery(data.battery, data.shortCircuit);
+    hostRef.querySelector('#rf-pack-voltage').value = batteryState.voltageV;
+    hostRef.querySelector('#rf-pack-mode').value = batteryState.resistanceMode;
+    hostRef.querySelector('#rf-display-unit').value = batteryState.displayUnit;
+    hostRef.querySelector('#rf-direct-resistance').value = batteryState.directResistance;
+    hostRef.querySelector('#rf-direct-unit').value = batteryState.directUnit;
+    renderBatteryRows();
+    const wrap = hostRef.querySelector('#cc-curves');
+    wrap.innerHTML = '';
+    curveSeq = 0;
+    colorIdx = 0;
+    (data.curves?.length ? data.curves : [{ name: '曲线 1', color: PALETTE[0], points: [] }]).forEach((curve) => addCurve(curve.name, curve.color, curve.points || []));
+    hostRef.querySelector('#cc-title').value = data.title || '保护配合曲线（时间-电流）';
+    hostRef.querySelector('#rf-analysis').value = data.analysis || '';
+    const range = data.range || {};
+    ['xmin', 'xmax', 'ymin', 'ymax'].forEach((key) => { hostRef.querySelector(`#cc-${key}`).value = range[key] || ''; });
+    updateBattery();
+  }
+
+  function reportSegmentRows(result) {
+    if (!result.segments.length) return '<tr><td colspan="6">整包电阻采用直接输入定值。</td></tr>';
+    return result.segments.map((segment) => `<tr><td>R${segment.index}<br>${esc(segment.item.name)}</td><td>${esc(segment.detail)}</td><td>${resistanceText(segment.singleResistance)}</td><td>${segment.quantity}</td><td>${segment.item.quantityRelation === 'series' ? '串联 nR' : '并联 R/n'}</td><td>${resistanceText(segment.effectiveResistance)}</td></tr>`).join('');
+  }
+
+  function reportHtml(result) {
+    const analysis = hostRef.querySelector('#rf-analysis').value.trim() || '未填写人工校核分析。';
+    const chart = hostRef.querySelector('#cc-chart').innerHTML;
+    const curveRows = collectCurves().map((curve) => { const currents = curve.points.map((point) => point[0]); const times = curve.points.map((point) => point[1]); return `<tr><td>${esc(curve.name)}</td><td>${curve.points.length}</td><td>${currents.length ? `${Math.min(...currents)}～${Math.max(...currents)} A` : '—'}</td><td>${times.length ? `${Math.min(...times)}～${Math.max(...times)} s` : '—'}</td></tr>`; }).join('');
+    return `<article class="rf-report"><section class="rf-report-page"><header><h1>电池包外短与继电器/保险丝保护配合校核报告</h1><p>生成时间：${new Date().toLocaleString('zh-CN')}</p></header><h2>1. 电池包计算</h2><table><tr><th>电池包电压</th><td>${E.fmtExact(result.voltageV, 6)} V</td><th>整包等效电阻</th><td>${resistanceText(result.totalResistance)}</td><th>最大外短电流</th><td><b>${E.fmtExact(result.shortCircuitCurrent, 3)} A</b></td></tr></table><h2>2. 电阻组成</h2><table class="rf-report-components"><thead><tr><th>引用 / 名称</th><th>取得方式 / 参数</th><th>单个电阻</th><th>数量</th><th>关系</th><th>折算电阻</th></tr></thead><tbody>${reportSegmentRows(result)}</tbody></table><p><b>组合表达式：</b>${result.mode === 'segments' ? esc(batteryState.expression) : '直接输入整包定值电阻'}</p><div class="rf-report-warning">Isc,max=Upack/Rpack 为理想初始外短电流上限；正式设计还应评估电芯动态内阻、电压塌陷、电弧、SOC、温度、老化及制造离散。</div></section><section class="rf-report-page"><h2>3. 保护配合曲线</h2><div class="rf-report-chart">${chart}</div></section><section class="rf-report-page"><h2>4. 人工校核分析</h2><div class="rf-report-analysis">${esc(analysis)}</div><h2>5. 曲线数据摘要</h2><table><thead><tr><th>曲线名称</th><th>数据点数量</th><th>电流范围</th><th>时间范围</th></tr></thead><tbody>${curveRows}</tbody></table></section></article>`;
+  }
+
+  function exportPdf() {
+    let result;
+    try { result = computeBattery(); } catch (error) { window.alert(`无法生成报告：${error.message}`); return; }
+    renderChart();
+    const shell = hostRef.querySelector('#rf-report-shell');
+    shell.innerHTML = reportHtml(result);
+    shell.classList.add('active');
+    const originalParent = shell.parentNode;
+    const originalNextSibling = shell.nextSibling;
+    document.body.appendChild(shell);
+    const oldTitle = document.title;
+    document.title = '电池包保护配合校核报告';
+    const restore = () => { document.title = oldTitle; shell.classList.remove('active'); originalParent.insertBefore(shell, originalNextSibling); window.removeEventListener('afterprint', restore); };
+    window.addEventListener('afterprint', restore);
+    setTimeout(() => window.print(), 150);
+  }
+
+  function moduleStyle() {
+    return `.rf-toolbar,.rf-section-head{display:flex;justify-content:space-between;gap:18px;align-items:center}.rf-toolbar h3,.rf-toolbar p,.rf-section-head h4,.rf-section-head p{margin:3px 0}.rf-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.rf-file-btn{position:relative;overflow:hidden}.rf-file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}.rf-pack-settings{display:grid;grid-template-columns:1fr 1.35fr 1fr;gap:14px;align-items:end}.rf-pack-settings>label{display:grid;gap:5px}.rf-pack-settings>label>span{font-size:12px;font-weight:700}.rf-direct-box{max-width:460px;margin-top:14px}.rf-direct-box label{display:block;font-size:12px;font-weight:700;margin-bottom:5px}.rf-res-scroll{overflow:auto;margin-top:12px}.rf-res-head,.rf-res-row{display:grid;grid-template-columns:54px minmax(140px,1.1fr) 105px minmax(180px,1.3fr) 82px 76px 76px 88px 68px 115px 38px;gap:7px;min-width:1240px;align-items:stretch}.rf-res-head{padding:7px;background:#edf2f6;border:1px solid #c3cfda;font-size:12px;font-weight:700;text-align:center}.rf-res-row{padding:7px;border:1px solid #d3dce4;border-top:0;background:#fff}.rf-res-row input,.rf-res-row select{width:100%;min-width:0}.rf-res-ref{display:flex;align-items:center;justify-content:center;background:#f0f5f8;border:1px solid #c8d3dc}.rf-res-source .input-row select{max-width:72px}.rf-expression{margin-top:14px}.rf-muted{margin:0 0 10px;color:var(--text-muted);font-size:13px}.rf-result-table{margin-top:14px}.rf-result-table th,.rf-result-table td{font-size:12px}.rf-analysis{display:grid;gap:6px;margin-top:18px}.rf-analysis>span{font-weight:700}.rf-analysis textarea{min-height:130px;resize:vertical}.rf-analysis small{color:var(--text-muted)}.rf-report-shell{display:none}
+    @media(max-width:900px){.rf-toolbar,.rf-section-head{align-items:flex-start;flex-direction:column}.rf-actions{justify-content:flex-start}.rf-pack-settings{grid-template-columns:1fr}}
+    @media print{@page{size:A4 landscape;margin:10mm}html,body{min-height:0!important;height:auto!important;background:#fff!important}body>*:not(.rf-report-shell){display:none!important}.rf-report-shell.active{display:block!important;position:static!important;width:100%!important;background:#fff!important;color:#111!important}.rf-report{font-family:'Microsoft YaHei',Arial,sans-serif;font-size:8.5pt}.rf-report-page{break-after:page;page-break-after:always}.rf-report-page:last-child{break-after:auto;page-break-after:auto}.rf-report header{border-bottom:2px solid #173b5e;margin-bottom:7mm}.rf-report h1{font-size:18pt;margin:0 0 2mm}.rf-report h2{font-size:11.5pt;margin:5mm 0 2mm}.rf-report table{width:100%;border-collapse:collapse;table-layout:fixed}.rf-report th,.rf-report td{border:1px solid #777;padding:1.6mm;word-break:break-word}.rf-report th{background:#e9eef2}.rf-report-components th:nth-child(2){width:34%}.rf-report-warning{margin-top:4mm;padding:3mm;border-left:3px solid #b7791f;background:#fff8e6}.rf-report-chart svg{max-height:125mm}.rf-report-chart .note{font-size:8pt}.rf-report-analysis{min-height:25mm;padding:3mm;border:1px solid #999;white-space:pre-wrap}.rf-report .chart-legend{font-size:8pt}}
+    `;
+  }
+
+  T.register({ id: 'relay-fuse', title: '继电器 / 保险丝匹配', icon: '🔌', group: '电气计算', desc: '计算电池包等效内阻与最大外短电流，录入厂家保护曲线并输出人工校核分析及 PDF 报告。', render: renderModule });
 })();

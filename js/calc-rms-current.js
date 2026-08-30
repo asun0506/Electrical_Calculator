@@ -25,13 +25,14 @@
   const DENSITY = { copper: 5, aluminum: 3.9 };
   // 标准导线截面积（mm²，IEC 60228 常见规格）
   const SIZES = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240, 300];
+  const METRIC_EQUIVALENTS = [0.05, 0.08, 0.14, 0.22, 0.35, 0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120];
 
   // 当前解析得到的电流-时间数据点（内存态，不逐条渲染到 DOM）
   let currentPts = [];
 
   T.register({
     id: 'rms-current',
-    title: 'RMS 电流 / 导线',
+    title: 'RMS 电流 / 线径估算',
     icon: '🔀',
     group: '电气计算',
     desc: '粘贴电流–时间曲线数据，计算 RMS 有效电流，并推荐铜/铝导线最小截面积与标准规格。',
@@ -56,6 +57,13 @@
         </div>
 
         <div class="panel" id="rc-result" style="display:none"></div>
+
+        <div class="panel">
+          <h3 class="panel-title"><span class="dot"></span>AWG 线规换算对照表</h3>
+          <p style="margin:0 0 12px;color:var(--text-muted);font-size:13px">按实心圆导体 AWG 几何定义换算；直流电阻按 20 °C 退火铜电阻率估算。绞线外径、镀层、温度与结构会使实际值不同，请以线缆规格书为准。</p>
+          <div style="overflow:auto"><table class="param-table" style="min-width:720px"><thead><tr><th>AWG</th><th>导体直径/mm</th><th>截面积/mm²</th><th>铜导体电阻/Ω·km⁻¹</th><th>邻近公制截面积/mm²</th></tr></thead><tbody>${awgRows()}</tbody></table></div>
+          <div class="note">换算关系：d(in)=0.005×92<sup>(36-AWG)/39</sup>，A=πd²/4。4/0、3/0、2/0、1/0 分别按 AWG -3、-2、-1、0 计算。</div>
+        </div>
       `;
 
       document.getElementById('rc-calc').addEventListener('click', parseAndCalc);
@@ -81,6 +89,25 @@
     });
     pts.sort((a, b) => a[0] - b[0]);
     return pts;
+  }
+
+  function awgLabel(gauge) {
+    return gauge === -3 ? '4/0' : gauge === -2 ? '3/0' : gauge === -1 ? '2/0' : gauge === 0 ? '1/0' : String(gauge);
+  }
+
+  function nearestMetric(area) {
+    return METRIC_EQUIVALENTS.reduce((best, item) => Math.abs(item - area) < Math.abs(best - area) ? item : best, METRIC_EQUIVALENTS[0]);
+  }
+
+  function awgRows() {
+    const rows = [];
+    for (let gauge = -3; gauge <= 30; gauge += 1) {
+      const diameterMm = 0.005 * Math.pow(92, (36 - gauge) / 39) * 25.4;
+      const areaMm2 = Math.PI * diameterMm * diameterMm / 4;
+      const copperOhmPerKm = 17.241 / areaMm2;
+      rows.push(`<tr><td><b>${awgLabel(gauge)}</b></td><td>${diameterMm.toFixed(3)}</td><td>${areaMm2 >= 10 ? areaMm2.toFixed(2) : areaMm2.toFixed(3)}</td><td>${copperOhmPerKm.toFixed(copperOhmPerKm >= 10 ? 2 : 3)}</td><td>${nearestMetric(areaMm2)}</td></tr>`);
+    }
+    return rows.join('');
   }
 
   function parseAndCalc() {
