@@ -68,6 +68,27 @@
 
   T.register({
     id: 'materials',
+    resetLabel: '恢复默认查询（不删除材料库）',
+    captureDraft(host) {
+      return { category: host.querySelector('#mt-cat').value, name: currentName(), editing,
+        newOpen: host.querySelector('#mt-new-form').style.display !== 'none',
+        rows: ['mt', 'mtn'].map((prefix) => host.querySelectorAll(`#${prefix}-table-body tr:has(input)`).length) };
+    },
+    restoreDraft(saved, host) {
+      host.querySelector('#mt-cat').value = saved.category;
+      buildNameOptions(saved.name);
+      render();
+      if (saved.editing) enableEditing();
+      if (saved.newOpen) toggleNewForm();
+      ['mt', 'mtn'].forEach((prefix, index) => {
+        const body = host.querySelector(`#${prefix}-table-body`);
+        if (!body) return;
+        const desired = saved.rows[index];
+        while (body.querySelectorAll('tr:has(input)').length > desired) body.querySelector('tr:last-child').remove();
+        while (body.querySelectorAll('tr:has(input)').length < desired) addCurveRow(prefix);
+        updateRowNumbers(body);
+      });
+    },
     title: '材料数据库',
     icon: '🗂️',
     group: '材料库',
@@ -208,24 +229,19 @@
       <div class="io-row">
         <button class="btn btn-ghost btn-sm" id="mt-export">↑ 导出当前材料 Excel</button>
         <button class="btn btn-ghost btn-sm" id="mt-export-all">↑ 导出全部材料 Excel</button>
+        <button class="btn btn-ghost btn-sm" id="mt-export-en">↑ 导出当前材料英文 Excel</button>
+        <button class="btn btn-ghost btn-sm" id="mt-export-all-en">↑ 导出全部材料英文 Excel</button>
         <span class="io-hint">导出为 Excel(.xls) 表，含描述、全部参数与应力应变曲线</span>
       </div>
     `;
 
-    document.getElementById('mt-export').addEventListener('click', exportCurrent);
-    document.getElementById('mt-export-all').addEventListener('click', exportAll);
+    document.getElementById('mt-export').addEventListener('click', () => exportCurrent());
+    document.getElementById('mt-export-en').addEventListener('click', () => exportCurrent('en'));
+    document.getElementById('mt-export-all').addEventListener('click', () => exportAll());
+    document.getElementById('mt-export-all-en').addEventListener('click', () => exportAll('en'));
     document.getElementById('mt-edit').addEventListener('click', () => {
       if (!confirm('确认要修改默认材料参数吗？')) return;
-      editing = true;
-      document.querySelectorAll('#mt-detail .mt-p').forEach((inp) => { inp.disabled = false; });
-      // 启用曲线数据点编辑（含新增/删除）
-      document.querySelectorAll('#mt-detail .mt-curve').forEach((inp) => { inp.disabled = false; });
-      const addBtn = document.getElementById('mt-curve-add');
-      if (addBtn) addBtn.style.display = '';
-      document.querySelectorAll('#mt-detail .mt-curve-del').forEach((btn) => { btn.style.display = ''; });
-      document.getElementById('mt-edit').style.display = 'none';
-      document.getElementById('mt-save').style.display = '';
-      document.getElementById('mt-hint').textContent = '正在编辑，保存后写入并恢复只读';
+      enableEditing();
     });
     document.getElementById('mt-save').addEventListener('click', saveCurrent);
     // 曲线表：添加数据点 / 删除行
@@ -243,6 +259,17 @@
     } else {
       document.getElementById('mt-del').addEventListener('click', delCustom);
     }
+  }
+
+  function enableEditing() {
+    editing = true;
+    document.querySelectorAll('#mt-detail .mt-p,#mt-detail .mt-curve').forEach((input) => { input.disabled = false; });
+    const add = document.getElementById('mt-curve-add');
+    if (add) add.style.display = '';
+    document.querySelectorAll('#mt-detail .mt-curve-del').forEach((button) => { button.style.display = ''; });
+    document.getElementById('mt-edit').style.display = 'none';
+    document.getElementById('mt-save').style.display = '';
+    document.getElementById('mt-hint').textContent = '正在编辑，保存后写入并恢复只读';
   }
 
   /**
@@ -430,13 +457,14 @@
   }
 
   /** 生成单个材料的 Excel(HTML) 表格：描述 + 参数 + 应力应变曲线 */
-  function buildSheetHtml(name, mat, curve) {
+  function buildSheetHtml(name, mat, curve, lang = 'zh') {
+    const r = T.reportLanguage(lang);
     const esc = E.escapeHtml;
-    const meta = `<tr><td>${esc(mat.cn || '')}</td><td>${esc(mat.en || '')}</td><td>${esc(mat.abbr || '')}</td><td>${esc(mat.category)}</td></tr>`;
+    const meta = `<tr><td>${esc(mat.cn || '')}</td><td>${esc(mat.en || '')}</td><td>${esc(mat.abbr || '')}</td><td>${esc(r(mat.category))}</td></tr>`;
     const propRows = PARAMS.filter((p) => mat[p.k] !== undefined)
-      .map((p) => `<tr><td>${p.label}</td><td>${p.unit}</td><td>${mat[p.k]}</td><td></td></tr>`).join('');
+      .map((p) => `<tr><td>${r(p.label)}</td><td>${p.unit}</td><td>${mat[p.k]}</td><td></td></tr>`).join('');
     const curveRows = (curve || []).map(([e, s]) => `<tr><td>${e}</td><td>${s}</td></tr>`).join('');
-    return `
+    return r`
       <h3>${esc(name)}</h3>
       <table border="1">
         <tr><th>材料名</th><th>英文名</th><th>缩写</th><th>分类</th></tr>${meta}
@@ -452,8 +480,8 @@
       <br>`;
   }
 
-  function downloadXls(html, filename) {
-    const full = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>' + html + '</body></html>';
+  function downloadXls(html, filename, lang = 'zh') {
+    const full = '<html lang="' + lang + '" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"></head><body>' + html + '</body></html>';
     const blob = new Blob(['﻿' + full], { type: 'application/vnd.ms-excel' });
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -464,19 +492,19 @@
     URL.revokeObjectURL(a.href);
   }
 
-  function exportCurrent() {
+  function exportCurrent(lang = 'zh') {
     const name = currentName();
     const mat = effective(name);
     const curve = mat.curve || [];
-    downloadXls(buildSheetHtml(name, mat, curve), name + '.xls');
+    downloadXls(buildSheetHtml(name, mat, curve, lang), name + (lang === 'en' ? '_EN' : '') + '.xls', lang);
   }
 
-  function exportAll() {
+  function exportAll(lang = 'zh') {
     const all = allMaterials();
     let html = '';
     Object.keys(all).forEach((n) => {
-      html += buildSheetHtml(n, effective(n), effective(n).curve || []);
+      html += buildSheetHtml(n, effective(n), effective(n).curve || [], lang);
     });
-    downloadXls(html, '材料数据库全量.xls');
+    downloadXls(html, lang === 'en' ? 'Material_Database_EN.xls' : '材料数据库全量.xls', lang);
   }
 })();

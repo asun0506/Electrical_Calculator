@@ -32,6 +32,9 @@
 
   T.register({
     id: 'tolerance',
+    captureDraft: (host) => ({ rows: host.querySelector('#tc-rows').children.length }),
+    restoreDraft(saved, host) { host.querySelector('#tc-rows').innerHTML = ''; for (let i = 0; i < saved.rows; i += 1) addRow('', '', '', '+'); },
+    refreshDraft: calc,
     title: '公差分析',
     icon: '📏',
     group: '机械尺寸',

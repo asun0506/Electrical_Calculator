@@ -32,6 +32,9 @@
 
   T.register({
     id: 'bend-radius',
+    captureDraft: (host) => ({ rows: host.querySelector('#bd-rows').children.length }),
+    restoreDraft(saved, host) { host.querySelector('#bd-rows').innerHTML = ''; for (let i = 0; i < saved.rows; i += 1) addRow('', ''); },
+    refreshDraft: calc,
     title: '折弯半径',
     icon: '📐',
     group: '电气计算',

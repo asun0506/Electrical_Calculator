@@ -217,6 +217,8 @@
 
   T.register({
     id: 'engineering-formulas',
+    resetDraft(host) { activePage = 'math'; renderContent(host); },
+    refreshDraft: filterCards,
     title: '常见工程计算公式',
     icon: 'Σ',
     group: '工程参考',

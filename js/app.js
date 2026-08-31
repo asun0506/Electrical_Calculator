@@ -20,6 +20,8 @@
   const registry = [];
   const ACTIVE_KEY = 'electrical_toolkit_active_calculator_v1';
   let activeId = null;
+  let detachDraft = null;
+  let flushDraft = null;
 
   const MODULE_ICONS = {
     'relay-fuse': '<path d="M2.5 5h4M11.5 5h4M6.5 5l5 3-5 3m5-3h4"/>',
@@ -86,6 +88,9 @@
     open(id) {
       const calc = this.get(id);
       if (!calc) return;
+      if (flushDraft) flushDraft();
+      if (detachDraft) detachDraft();
+      detachDraft = flushDraft = null;
       activeId = id;
       try { localStorage.setItem(ACTIVE_KEY, activeId); } catch (error) { /* 本地存储不可用时不影响计算 */ }
       this.renderNav();
@@ -121,7 +126,7 @@
       });
     },
 
-    renderContent() {
+    renderContent(reset = false) {
       const calc = this.get(activeId);
       if (!calc) {
         el.content.innerHTML = '<div class="empty-tip">请从左侧选择一个计算器</div>';
@@ -138,12 +143,64 @@
       `;
       el.content.appendChild(header);
 
+      const draftBar = document.createElement('div');
+      draftBar.className = 'panel draft-toolbar';
+      draftBar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:10px 16px';
+      draftBar.innerHTML = '<span role="status" style="font-size:12px">编辑内容自动保存在当前浏览器（图片和附件一并保存）</span><button type="button" class="btn btn-ghost draft-reset">恢复当前模块默认值</button>';
+      el.content.appendChild(draftBar);
+      if (calc.resetLabel) draftBar.querySelector('.draft-reset').textContent = calc.resetLabel;
+
       const host = document.createElement('div');
       host.className = 'calc-body';
       el.content.appendChild(host);
 
       try {
         calc.render(host);
+        const drafts = window.CalculatorDrafts;
+        if (drafts) {
+          const saved = reset ? null : drafts.read(calc.id);
+          if (reset && calc.resetDraft) calc.resetDraft(host);
+          if (saved) drafts.restore(calc, host, saved);
+          const status = draftBar.querySelector('[role=status]');
+          status.textContent = saved ? '已恢复上次编辑内容 · 后续修改自动保存至当前浏览器' : '编辑内容自动保存在当前浏览器（图片和附件一并保存）';
+          let timer = null;
+          let lastSnapshot = '';
+          let saveRevision = 0;
+          const persist = () => {
+            clearTimeout(timer);
+            try {
+              const payload = drafts.capture(calc, host);
+              const json = JSON.stringify(payload);
+              if (json === lastSnapshot) return;
+              lastSnapshot = json;
+              const revision = ++saveRevision;
+              status.textContent = '正在保存…';
+              drafts.write(calc.id, payload).then((success) => {
+                if (revision !== saveRevision) return;
+                status.textContent = success ? '已保存至当前浏览器 · 切换模块或重新打开可继续编辑' : '浏览器保存失败，请立即导出 JSON 备份；当前内容仅在本次打开期间保留';
+                if (!success) lastSnapshot = '';
+              });
+            } catch (error) {
+              status.textContent = '草稿保存失败，请先导出 JSON 备份：' + error.message;
+            }
+          };
+          const schedule = () => { clearTimeout(timer); timer = setTimeout(persist, 180); };
+          ['input', 'change', 'click', 'paste'].forEach((type) => host.addEventListener(type, schedule, true));
+          const observer = new MutationObserver(schedule);
+          observer.observe(host, { childList: true, subtree: true, attributes: true, attributeFilter: ['open', 'src'] });
+          flushDraft = persist;
+          detachDraft = () => {
+            clearTimeout(timer); observer.disconnect();
+            ['input', 'change', 'click', 'paste'].forEach((type) => host.removeEventListener(type, schedule, true));
+          };
+          draftBar.querySelector('.draft-reset').addEventListener('click', () => {
+            const warning = calc.resetLabel ? `恢复“${calc.title}”的默认查询？尚未保存到材料库的编辑草稿将被清除，已保存材料库不变。` : `恢复“${calc.title}”的默认值？当前模块的输入、添加的行及附件将被替换，其他模块不受影响。建议先导出 JSON 备份。`;
+            if (!confirm(warning)) return;
+            detachDraft(); detachDraft = flushDraft = null;
+            this.renderContent(true);
+          });
+          persist();
+        }
       } catch (error) {
         console.error(`计算器“${calc.id}”渲染失败`, error);
         host.innerHTML = `<div class="panel module-error">
@@ -212,7 +269,10 @@
   global.ElUtil = util;
 
   // 模块加载完成后，优先恢复上次打开的计算器。
-  window.addEventListener('load', () => {
+  window.addEventListener('pagehide', () => { if (flushDraft) flushDraft(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && flushDraft) flushDraft(); });
+  window.addEventListener('load', async () => {
+    if (window.CalculatorDrafts) await window.CalculatorDrafts.ready;
     if (!registry.length) return;
     let remembered = null;
     try { remembered = localStorage.getItem(ACTIVE_KEY); } catch (error) { /* ignore */ }

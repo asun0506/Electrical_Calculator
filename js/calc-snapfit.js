@@ -84,6 +84,7 @@
 
   T.register({
     id: 'snapfit',
+    refreshDraft: calc,
     title: '塑料卡扣',
     icon: '🧩',
     group: '机械尺寸',

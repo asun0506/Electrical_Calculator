@@ -15,6 +15,7 @@
 
   T.register({
     id: 'oring',
+    refreshDraft: calc,
     title: '密封校核',
     icon: '⭕',
     group: '机械尺寸',

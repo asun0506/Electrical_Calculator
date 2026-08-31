@@ -57,6 +57,9 @@
 
   T.register({
     id: 'harness-od',
+    captureDraft: (host) => ({ rows: Array.from(host.querySelectorAll('#hw-rows .bd-row')).map((row) => ({ type: row.querySelector('.hw-type').value, size: row.querySelector('.hw-size').value })) }),
+    restoreDraft(saved, host) { host.querySelector('#hw-rows').innerHTML = ''; saved.rows.forEach((row) => addRow(WIRES[row.type] ? row.type : 'FLRY-B', row.size, 1)); },
+    refreshDraft(host) { host.querySelectorAll('#hw-rows .bd-row').forEach(updateOd); calc(); },
     title: '线束外径估算',
     icon: '🧵',
     group: '电气计算',

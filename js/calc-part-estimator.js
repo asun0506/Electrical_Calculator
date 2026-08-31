@@ -17,6 +17,9 @@
 
   T.register({
     id: 'part-estimator',
+    captureDraft: () => ({ project: deepClone(project), activeId }),
+    restoreDraft(saved) { project = normalizeProject(saved.project); activeId = saved.activeId || project.parts[0].id; renderAll(); },
+    resetDraft() { project = newProject(); activeId = project.parts[0].id; saveProject(); renderAll(); },
     title: '汽车零件模块化估价',
     icon: '🧾',
     group: '成本估算',
@@ -162,6 +165,7 @@
           <button class="btn btn-ghost btn-sm" data-action="import-project">↓ 导入项目JSON</button>
           <button class="btn btn-ghost btn-sm" data-action="export-project-json">↑ 导出项目JSON</button>
           <button class="btn btn-primary btn-sm" data-action="export-project-excel">↑ 导出项目Excel</button>
+          <button class="btn btn-ghost btn-sm" data-action="export-project-excel-en">↑ 导出项目英文Excel</button>
         </div>
       </div>
 
@@ -274,7 +278,7 @@
   }
 
   function renderSummary(part, total) {
-    return `<aside class="pe-summary"><div class="panel pe-summary-card"><span>实时估算单价</span><h3 data-summary="price">${money(total.price)}</h3><div class="pe-summary-rule"></div>${summaryRow('原材料', 'material', total.material)}${summaryRow('生产工序', 'process', total.process)}${summaryRow('包装', 'packaging', total.packaging)}${summaryRow('运输', 'transport', total.transport)}<div class="pe-summary-rule"></div><div class="pe-subtotal"><span>成本合计</span><strong data-summary="subtotal">${money(total.subtotal)}</strong></div><div class="pe-margin"><span>毛利率 / 加价率</span><strong data-summary="margin">${safe(part.basics.marginRate).toFixed(1)}%</strong></div><div class="pe-formula">产品单价 = 成本合计 ×（1 + 加价率）</div><button class="btn btn-ghost" data-action="import-part">↓ 导入当前零件JSON</button><button class="btn btn-ghost" data-action="export-part-json">↑ 导出当前零件JSON</button><button class="btn btn-primary" data-action="export-part-excel">↑ 导出当前零件Excel</button></div><div class="panel pe-db-stat"><strong>底库数据</strong><div><span><b>${DB.materials.length}</b>种原材料</span><span><b>${DB.processes.length}</b>道工序</span><span><b>${DB.packaging.length}</b>种包装</span><span><b>${DB.processTemplates.length}</b>套模板</span></div><p>底库只读；覆盖参数随零件保存。</p></div></aside>`;
+    return `<aside class="pe-summary"><div class="panel pe-summary-card"><span>实时估算单价</span><h3 data-summary="price">${money(total.price)}</h3><div class="pe-summary-rule"></div>${summaryRow('原材料', 'material', total.material)}${summaryRow('生产工序', 'process', total.process)}${summaryRow('包装', 'packaging', total.packaging)}${summaryRow('运输', 'transport', total.transport)}<div class="pe-summary-rule"></div><div class="pe-subtotal"><span>成本合计</span><strong data-summary="subtotal">${money(total.subtotal)}</strong></div><div class="pe-margin"><span>毛利率 / 加价率</span><strong data-summary="margin">${safe(part.basics.marginRate).toFixed(1)}%</strong></div><div class="pe-formula">产品单价 = 成本合计 ×（1 + 加价率）</div><button class="btn btn-ghost" data-action="import-part">↓ 导入当前零件JSON</button><button class="btn btn-ghost" data-action="export-part-json">↑ 导出当前零件JSON</button><button class="btn btn-primary" data-action="export-part-excel">↑ 导出当前零件Excel</button><button class="btn btn-ghost" data-action="export-part-excel-en">↑ 导出当前零件英文Excel</button></div><div class="panel pe-db-stat"><strong>底库数据</strong><div><span><b>${DB.materials.length}</b>种原材料</span><span><b>${DB.processes.length}</b>道工序</span><span><b>${DB.packaging.length}</b>种包装</span><span><b>${DB.processTemplates.length}</b>套模板</span></div><p>底库只读；覆盖参数随零件保存。</p></div></aside>`;
   }
 
   function summaryRow(label, key, value) { return `<div class="pe-summary-row"><span>${label}</span><strong data-summary="${key}">${money(value)}</strong></div>`; }
@@ -427,6 +431,8 @@
     else if (action === 'import-part') document.getElementById('pe-part-file').click();
     else if (action === 'export-project-json') exportJson(project, project.projectName || '零件估价项目');
     else if (action === 'export-part-json') exportJson({ ...project, projectName: `${project.projectName}-${part.basics.partNo}`, parts: [part] }, `${part.basics.partNo}-${part.basics.partName}`);
+    else if (action === 'export-project-excel-en') exportExcel(project.parts, project.projectName || 'Part_Estimate', 'en');
+    else if (action === 'export-part-excel-en') exportExcel([part], `${part.basics.partNo}-${part.basics.partName}`, 'en');
     else if (action === 'export-project-excel') exportExcel(project.parts, project.projectName || '零件估价项目');
     else if (action === 'export-part-excel') exportExcel([part], `${part.basics.partNo}-${part.basics.partName}`);
   }
@@ -522,24 +528,26 @@
     const base = String(name || `零件${index + 1}`).replace(/[\\/?*\[\]:]/g, '-').slice(0, 28) || `零件${index + 1}`;
     let value = base; let suffix = 1; while (used.has(value)) value = `${base.slice(0, 25)}-${suffix++}`; used.add(value); return value;
   }
-  function partRows(part) {
+  function partRows(part, lang = 'zh') {
+    const r = T.reportLanguage(lang);
     const t = totals(part);
     return [
-      ['汽车零件模块化估价结果'], ['零件号', part.basics.partNo, '零件名称', part.basics.partName], ['加工工艺', part.basics.processDescription, '外形尺寸/mm', part.basics.dimensions], ['是否开模', part.basics.moldRequired, '模具腔数', part.basics.cavities, '表面积/mm²', part.basics.surfaceArea], [],
-      ['成本汇总', '金额 / RMB'], ['原材料', t.material], ['工序', t.process], ['包装', t.packaging], ['运输', t.transport], ['成本合计', t.subtotal], ['毛利率/加价率', part.basics.marginRate / 100], ['估算单价', t.price], [],
-      ['原材料明细'], ['类别', '子类型', '牌号/属性', '单位', '单价', '数量', '可回收', '利用率', '回收折价率', '成本'], ...part.materials.map((line) => [line.category, line.subtype, line.spec, line.unit, line.unitPrice, line.quantity, line.recyclable, line.utilization / 100, line.recycleDiscount / 100, materialCost(line)]), [],
-      ['工序明细'], ['编号', '工序大类', '工序名称', '节拍/s', '设备价', '功率/kW', '工人数', '月薪', '良率', '次数', '单次成本', '合计'], ...part.processes.map((line) => { const c = processCost(line); return [line.id, line.category, line.name, line.cycleTime, line.equipmentPrice, line.power, line.workers, line.monthlySalary, line.yieldRate, line.count, c.unitCost, c.total]; }), [],
-      ['包装明细'], ['分组', '包材种类', '包材价格', '循环使用', '循环次数', '每箱/容器用量', '每箱零件数', '单件摊销'], ...part.packaging.map((line) => [line.group, line.name, line.price, line.reusable, line.reuseCount, line.packageQuantity, line.partsPerContainer, packagingCost(line)]), [],
-      ['运输明细'], ['单程运输费用', part.basics.transportFee, '单趟运输数量', part.basics.transportQuantity, '单件运输摊销', t.transport],
+      [r('汽车零件模块化估价结果')], [r('零件号'), part.basics.partNo, r('零件名称'), part.basics.partName], [r('加工工艺'), part.basics.processDescription, r('外形尺寸/mm'), part.basics.dimensions], [r('是否开模'), part.basics.moldRequired, r('模具腔数'), part.basics.cavities, r('表面积/mm²'), part.basics.surfaceArea], [],
+      [r('成本汇总'), r('金额 / RMB')], [r('原材料'), t.material], [r('工序'), t.process], [r('包装'), t.packaging], [r('运输'), t.transport], [r('成本合计'), t.subtotal], [r('毛利率/加价率'), part.basics.marginRate / 100], [r('估算单价'), t.price], [],
+      [r('原材料明细')], [r('类别'), r('子类型'), r('牌号/属性'), r('单位'), r('单价'), r('数量'), r('可回收'), r('利用率'), r('回收折价率'), r('成本')], ...part.materials.map((line) => [line.category, line.subtype, line.spec, line.unit, line.unitPrice, line.quantity, line.recyclable, line.utilization / 100, line.recycleDiscount / 100, materialCost(line)]), [],
+      [r('工序明细')], [r('编号'), r('工序大类'), r('工序名称'), r('节拍/s'), r('设备价'), r('功率/kW'), r('工人数'), r('月薪'), r('良率'), r('次数'), r('单次成本'), r('合计')], ...part.processes.map((line) => { const c = processCost(line); return [line.id, line.category, line.name, line.cycleTime, line.equipmentPrice, line.power, line.workers, line.monthlySalary, line.yieldRate, line.count, c.unitCost, c.total]; }), [],
+      [r('包装明细')], [r('分组'), r('包材种类'), r('包材价格'), r('循环使用'), r('循环次数'), r('每箱/容器用量'), r('每箱零件数'), r('单件摊销')], ...part.packaging.map((line) => [line.group, line.name, line.price, line.reusable, line.reuseCount, line.packageQuantity, line.partsPerContainer, packagingCost(line)]), [],
+      [r('运输明细')], [r('单程运输费用'), part.basics.transportFee, r('单趟运输数量'), part.basics.transportQuantity, r('单件运输摊销'), t.transport],
     ];
   }
-  function exportExcel(parts, name) {
-    if (!window.XLSX) return alert('Excel导出组件未加载，请确认 js/vendor/xlsx.min.js 文件存在。');
+  function exportExcel(parts, name, lang = 'zh') {
+    const r = T.reportLanguage(lang);
+    if (!window.XLSX) return alert(r('Excel导出组件未加载，请确认 js/vendor/xlsx.min.js 文件存在。'));
     const wb = XLSX.utils.book_new(); const used = new Set();
-    const summary = [['零件号', '零件名称', '原材料', '工序', '包装', '运输', '成本合计', '毛利率/加价率', '估算单价']];
+    const summary = [[r('零件号'), r('零件名称'), r('原材料'), r('工序'), r('包装'), r('运输'), r('成本合计'), r('毛利率/加价率'), r('估算单价')]];
     parts.forEach((part) => { const t = totals(part); summary.push([part.basics.partNo, part.basics.partName, t.material, t.process, t.packaging, t.transport, t.subtotal, part.basics.marginRate / 100, t.price]); });
-    const summarySheet = XLSX.utils.aoa_to_sheet(summary); summarySheet['!cols'] = [{wch:18},{wch:24},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:14}]; XLSX.utils.book_append_sheet(wb, summarySheet, '项目汇总'); used.add('项目汇总');
-    parts.forEach((part, index) => { const sheet = XLSX.utils.aoa_to_sheet(partRows(part)); sheet['!cols'] = Array.from({length:12}, (_, i) => ({wch: i < 3 ? 22 : 15})); XLSX.utils.book_append_sheet(wb, sheet, safeSheetName(`${part.basics.partNo}-${part.basics.partName}`, index, used)); });
-    XLSX.writeFile(wb, `${safeFileName(name)}.xlsx`);
+    const summarySheet = XLSX.utils.aoa_to_sheet(summary); summarySheet['!cols'] = [{wch:18},{wch:24},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:14}]; XLSX.utils.book_append_sheet(wb, summarySheet, r('项目汇总')); used.add(r('项目汇总'));
+    parts.forEach((part, index) => { const sheet = XLSX.utils.aoa_to_sheet(partRows(part, lang)); sheet['!cols'] = Array.from({length:12}, (_, i) => ({wch: i < 3 ? 22 : 15})); XLSX.utils.book_append_sheet(wb, sheet, safeSheetName(`${part.basics.partNo}-${part.basics.partName}`, index, used)); });
+    XLSX.writeFile(wb, `${safeFileName(name)}${lang === 'en' ? '_EN' : ''}.xlsx`);
   }
 })();

@@ -37,6 +37,7 @@
 
   T.register({
     id: 'bolt',
+    refreshDraft: calc,
     title: '螺栓扭矩校核',
     icon: '🔩',
     group: '机械尺寸',

@@ -149,10 +149,7 @@
     let legendHtml = '';
     if (legendItems.length) {
       legendHtml = '<div class="chart-legend">' + legendItems.map((li) => {
-        const swatch = li.dashed
-          ? `background:repeating-linear-gradient(90deg, ${li.color} 0 6px, #fff 6px 10px)`
-          : `background:${li.color}`;
-        return `<div class="chart-legend-item"><span class="legend-swatch" style="${swatch}"></span><span class="legend-name">${escapeH(li.name)}</span></div>`;
+        return `<div class="chart-legend-item"><svg class="legend-swatch" viewBox="0 0 24 8" width="24" height="8" style="width:24px;height:8px;overflow:visible" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" stroke="${escapeH(li.color)}" stroke-width="3" ${li.dashed ? 'stroke-dasharray="6 4"' : ''}/></svg><span class="legend-name">${escapeH(li.name)}</span></div>`;
       }).join('') + '</div>';
     }
 
@@ -227,7 +224,7 @@
     // 参考线：μ、±σ、±3σ、±tol
     const cX = px(mean);
     svg += `<line x1="${cX.toFixed(1)}" y1="${m.t}" x2="${cX.toFixed(1)}" y2="${m.t + plotH}" stroke="#64748b" stroke-width="1.2"/>`;
-    svg += `<text x="${cX.toFixed(1)}" y="${m.t + 12}" text-anchor="middle" font-size="11" fill="#64748b">μ 名义</text>`;
+    svg += `<text x="${cX.toFixed(1)}" y="${m.t + 12}" text-anchor="middle" font-size="11" fill="#64748b">${cfg.lang === 'en' ? 'μ Nominal' : 'μ 名义'}</text>`;
     [-1, 1].forEach((k) =>
       svg += `<line x1="${px(mean + k * sigma).toFixed(1)}" y1="${m.t}" x2="${px(mean + k * sigma).toFixed(1)}" y2="${m.t + plotH}" stroke="#94a3b8" stroke-width="1" stroke-dasharray="4 3"/>`);
     [-3, 3].forEach((k) =>
@@ -246,7 +243,7 @@
     });
     // Y 轴
     svg += `<line x1="${m.l}" y1="${m.t}" x2="${m.l}" y2="${m.t + plotH}" stroke="#cbd5e1"/>`;
-    svg += `<text x="${m.l - 8}" y="${m.t + 4}" text-anchor="end" font-size="11" fill="#94a3b8">密度</text>`;
+    svg += `<text x="${m.l - 8}" y="${m.t + 4}" text-anchor="end" font-size="11" fill="#94a3b8">${cfg.lang === 'en' ? 'Density' : '密度'}</text>`;
 
     let out = '';
     if (cfg.title) out += `<div class="chart-title">${escapeH(cfg.title)}</div>`;
@@ -370,10 +367,7 @@
     let legendHtml = '';
     if (legendItems.length) {
       legendHtml = '<div class="chart-legend">' + legendItems.map((li) => {
-        const swatch = li.dashed
-          ? `background:repeating-linear-gradient(90deg, ${li.color} 0 6px, #fff 6px 10px)`
-          : `background:${li.color}`;
-        return `<div class="chart-legend-item"><span class="legend-swatch" style="${swatch}"></span><span class="legend-name">${escapeH(li.name)}</span></div>`;
+        return `<div class="chart-legend-item"><svg class="legend-swatch" viewBox="0 0 24 8" width="24" height="8" style="width:24px;height:8px;overflow:visible" aria-hidden="true"><line x1="0" y1="4" x2="24" y2="4" stroke="${escapeH(li.color)}" stroke-width="3" ${li.dashed ? 'stroke-dasharray="6 4"' : ''}/></svg><span class="legend-name">${escapeH(li.name)}</span></div>`;
       }).join('') + '</div>';
     }
 

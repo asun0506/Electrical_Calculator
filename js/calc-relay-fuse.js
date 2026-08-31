@@ -103,7 +103,7 @@
     host.innerHTML = `<style>${moduleStyle()}</style>
       <section class="panel rf-toolbar">
         <div><h3>电池包外短与保护配合校核</h3><p>先计算电池包等效内阻和最大外短电流，再用厂家时间-电流曲线进行人工配合分析。</p></div>
-        <div class="rf-actions"><button type="button" class="btn" id="cc-export">导出 JSON</button><label class="btn rf-file-btn">导入 JSON<input type="file" id="cc-file" accept=".json,application/json"></label><button type="button" class="btn btn-primary" id="rf-export-pdf">打印 / 导出 PDF</button></div>
+        <div class="rf-actions"><button type="button" class="btn" id="cc-export">导出 JSON</button><label class="btn rf-file-btn">导入 JSON<input type="file" id="cc-file" accept=".json,application/json"></label><button type="button" class="btn btn-primary" id="rf-export-pdf">打印 / 导出 PDF</button><button type="button" class="btn" id="rf-export-pdf-en">导出英文 PDF</button></div>
       </section>
 
       <section class="panel">
@@ -163,7 +163,8 @@
     hostRef.querySelector('#cc-reset-range').addEventListener('click', () => { ['cc-xmin', 'cc-xmax', 'cc-ymin', 'cc-ymax'].forEach((id) => { hostRef.querySelector(`#${id}`).value = ''; }); renderChart(); });
     hostRef.querySelector('#cc-export').addEventListener('click', exportData);
     hostRef.querySelector('#cc-file').addEventListener('change', (event) => { importData(event.target.files?.[0]); event.target.value = ''; });
-    hostRef.querySelector('#rf-export-pdf').addEventListener('click', exportPdf);
+    hostRef.querySelector('#rf-export-pdf').addEventListener('click', () => exportPdf());
+    hostRef.querySelector('#rf-export-pdf-en').addEventListener('click', () => exportPdf('en'));
   }
 
   function toggleBatteryMode() {
@@ -346,11 +347,16 @@
     }));
   }
 
-  function renderChart() {
+  function renderChart(lang = 'zh', reportOnly = false) {
+    const r = T.reportLanguage(lang);
     const chart = hostRef?.querySelector('#cc-chart');
     if (!chart) return;
     const valid = collectCurves().filter((curve) => curve.points.length);
-    if (!valid.length) { chart.innerHTML = '<div class="empty-tip">请至少输入一条有效曲线。</div>'; return; }
+    if (!valid.length) {
+      const empty = r('<div class="empty-tip">请至少输入一条有效曲线。</div>');
+      if (!reportOnly) chart.innerHTML = empty;
+      return empty;
+    }
     let minX = Infinity, maxX = 0, minY = Infinity, maxY = 0;
     valid.forEach((curve) => curve.points.forEach(([current, time]) => { minX = Math.min(minX, current); maxX = Math.max(maxX, current); minY = Math.min(minY, time); maxY = Math.max(maxY, time); }));
     if (lastBatteryResult) maxX = Math.max(maxX, lastBatteryResult.shortCircuitCurrent);
@@ -363,8 +369,11 @@
     let yMax = ranges.ymax > 0 ? ranges.ymax : Math.pow(10, Math.ceil(Math.log10(maxY)) + 0.3);
     if (xMin >= xMax) [xMin, xMax] = [xMax, xMin];
     if (yMin >= yMax) [yMin, yMax] = [yMax, yMin];
-    const vLines = lastBatteryResult ? [{ x: lastBatteryResult.shortCircuitCurrent, color: '#64748b', label: `最大外短电流 ${E.fmtExact(lastBatteryResult.shortCircuitCurrent, 1)} A`, dash: true }] : [];
-    chart.innerHTML = T.chart({ width: 780, height: 460, title: hostRef.querySelector('#cc-title').value.trim() || undefined, x: { min: xMin, max: xMax, label: '电流 I', unit: 'A' }, y: { min: yMin, max: yMax, label: '时间 t', unit: 's' }, series: valid, vLines, note: '<strong>判读原则：</strong>同一故障电流下，保护器件动作曲线应早于被保护件损伤边界，并结合制造离散、环境温度、老化、分断能力和系统控制策略保留裕量。灰色竖线为计算得到的理想最大外短电流。' });
+    const vLines = lastBatteryResult ? [{ x: lastBatteryResult.shortCircuitCurrent, color: '#64748b', label: r`最大外短电流 ${E.fmtExact(lastBatteryResult.shortCircuitCurrent, 1)} A`, dash: true }] : [];
+    const title = hostRef.querySelector('#cc-title').value.trim();
+    const html = T.chart({ width: 780, height: 460, title: title === '保护配合曲线（时间-电流）' ? r(title) : title, x: { min: xMin, max: xMax, label: r('电流 I'), unit: 'A' }, y: { min: yMin, max: yMax, label: r('时间 t'), unit: 's' }, series: valid, vLines });
+    if (!reportOnly) chart.innerHTML = html;
+    return html;
   }
 
   function collectAll() {
@@ -411,37 +420,48 @@
     curveSeq = 0;
     colorIdx = 0;
     (data.curves?.length ? data.curves : [{ name: '曲线 1', color: PALETTE[0], points: [] }]).forEach((curve) => addCurve(curve.name, curve.color, curve.points || []));
-    hostRef.querySelector('#cc-title').value = data.title || '保护配合曲线（时间-电流）';
+    hostRef.querySelector('#cc-title').value = data.title ?? '保护配合曲线（时间-电流）';
     hostRef.querySelector('#rf-analysis').value = data.analysis || '';
     const range = data.range || {};
     ['xmin', 'xmax', 'ymin', 'ymax'].forEach((key) => { hostRef.querySelector(`#cc-${key}`).value = range[key] || ''; });
     updateBattery();
   }
 
-  function reportSegmentRows(result) {
-    if (!result.segments.length) return '<tr><td colspan="6">整包电阻采用直接输入定值。</td></tr>';
-    return result.segments.map((segment) => `<tr><td>R${segment.index}<br>${esc(segment.item.name)}</td><td>${esc(segment.detail)}</td><td>${resistanceText(segment.singleResistance)}</td><td>${segment.quantity}</td><td>${segment.item.quantityRelation === 'series' ? '串联 nR' : '并联 R/n'}</td><td>${resistanceText(segment.effectiveResistance)}</td></tr>`).join('');
+  function reportSegmentRows(result, lang = 'zh') {
+    const r = T.reportLanguage(lang);
+    if (!result.segments.length) return r('<tr><td colspan="6">整包电阻采用直接输入定值。</td></tr>');
+    return result.segments.map((segment) => `<tr><td>R${segment.index}<br>${esc(segment.item.name)}</td><td>${esc(r(segment.detail))}</td><td>${resistanceText(segment.singleResistance)}</td><td>${segment.quantity}</td><td>${r(segment.item.quantityRelation === 'series' ? '串联 nR' : '并联 R/n')}</td><td>${resistanceText(segment.effectiveResistance)}</td></tr>`).join('');
   }
 
-  function reportHtml(result) {
-    const analysis = hostRef.querySelector('#rf-analysis').value.trim() || '未填写人工校核分析。';
-    const chart = hostRef.querySelector('#cc-chart').innerHTML;
+  function reportHtml(result, lang = 'zh') {
+    const r = T.reportLanguage(lang);
+    const analysis = hostRef.querySelector('#rf-analysis').value.trim();
+    const chart = renderChart(lang, true);
     const curveRows = collectCurves().map((curve) => { const currents = curve.points.map((point) => point[0]); const times = curve.points.map((point) => point[1]); return `<tr><td>${esc(curve.name)}</td><td>${curve.points.length}</td><td>${currents.length ? `${Math.min(...currents)}～${Math.max(...currents)} A` : '—'}</td><td>${times.length ? `${Math.min(...times)}～${Math.max(...times)} s` : '—'}</td></tr>`; }).join('');
-    return `<article class="rf-report"><section class="rf-report-page"><header><h1>电池包外短与继电器/保险丝保护配合校核报告</h1><p>生成时间：${new Date().toLocaleString('zh-CN')}</p></header><h2>1. 电池包计算</h2><table><tr><th>电池包电压</th><td>${E.fmtExact(result.voltageV, 6)} V</td><th>整包等效电阻</th><td>${resistanceText(result.totalResistance)}</td><th>最大外短电流</th><td><b>${E.fmtExact(result.shortCircuitCurrent, 3)} A</b></td></tr></table><h2>2. 电阻组成</h2><table class="rf-report-components"><thead><tr><th>引用 / 名称</th><th>取得方式 / 参数</th><th>单个电阻</th><th>数量</th><th>关系</th><th>折算电阻</th></tr></thead><tbody>${reportSegmentRows(result)}</tbody></table><p><b>组合表达式：</b>${result.mode === 'segments' ? esc(batteryState.expression) : '直接输入整包定值电阻'}</p><div class="rf-report-warning">Isc,max=Upack/Rpack 为理想初始外短电流上限；正式设计还应评估电芯动态内阻、电压塌陷、电弧、SOC、温度、老化及制造离散。</div></section><section class="rf-report-page"><h2>3. 保护配合曲线</h2><div class="rf-report-chart">${chart}</div></section><section class="rf-report-page"><h2>4. 人工校核分析</h2><div class="rf-report-analysis">${esc(analysis)}</div><h2>5. 曲线数据摘要</h2><table><thead><tr><th>曲线名称</th><th>数据点数量</th><th>电流范围</th><th>时间范围</th></tr></thead><tbody>${curveRows}</tbody></table></section></article>`;
+    return r`<article class="rf-report" lang="${lang}">
+      <section class="rf-report-page"><header><h1>电池包外短与继电器/保险丝保护配合校核报告</h1><p>生成时间：${new Date().toLocaleString(lang === 'en' ? 'en-GB' : 'zh-CN')}</p></header>
+        <h2>1. 电池包计算</h2><table><tr><th>电池包电压</th><td>${E.fmtExact(result.voltageV, 6)} V</td><th>整包等效电阻</th><td>${resistanceText(result.totalResistance)}</td><th>最大外短电流</th><td><b>${E.fmtExact(result.shortCircuitCurrent, 3)} A</b></td></tr></table>
+        <h2>2. 电阻组成</h2><table class="rf-report-components"><thead><tr><th>引用 / 名称</th><th>取得方式 / 参数</th><th>单个电阻</th><th>数量</th><th>关系</th><th>折算电阻</th></tr></thead><tbody>${reportSegmentRows(result, lang)}</tbody></table>
+        <p><b>组合表达式：</b>${result.mode === 'segments' ? esc(batteryState.expression) : r('直接输入整包定值电阻')}</p>
+      </section>
+      <section class="rf-report-page"><h2>3. 保护配合曲线</h2><div class="rf-report-chart">${chart}</div></section>
+      <section class="rf-report-page">${analysis ? r`<h2>4. 人工校核分析</h2><div class="rf-report-analysis">${esc(analysis)}</div>` : ''}
+        <h2>${analysis ? '5' : '4'}. 曲线数据摘要</h2><table><thead><tr><th>曲线名称</th><th>数据点数量</th><th>电流范围</th><th>时间范围</th></tr></thead><tbody>${curveRows}</tbody></table>
+      </section></article>`;
   }
 
-  function exportPdf() {
+  function exportPdf(lang = 'zh') {
     let result;
     try { result = computeBattery(); } catch (error) { window.alert(`无法生成报告：${error.message}`); return; }
     renderChart();
     const shell = hostRef.querySelector('#rf-report-shell');
-    shell.innerHTML = reportHtml(result);
+    shell.innerHTML = reportHtml(result, lang);
     shell.classList.add('active');
     const originalParent = shell.parentNode;
     const originalNextSibling = shell.nextSibling;
     document.body.appendChild(shell);
     const oldTitle = document.title;
-    document.title = '电池包保护配合校核报告';
+    document.title = T.reportLanguage(lang)('电池包保护配合校核报告');
     const restore = () => { document.title = oldTitle; shell.classList.remove('active'); originalParent.insertBefore(shell, originalNextSibling); window.removeEventListener('afterprint', restore); };
     window.addEventListener('afterprint', restore);
     setTimeout(() => window.print(), 150);
@@ -454,5 +474,24 @@
     `;
   }
 
-  T.register({ id: 'relay-fuse', title: '继电器 / 保险丝匹配', icon: '🔌', group: '电气计算', desc: '计算电池包等效内阻与最大外短电流，录入厂家保护曲线并输出人工校核分析及 PDF 报告。', render: renderModule });
+  T.register({ id: 'relay-fuse', title: '继电器 / 保险丝匹配', icon: '🔌', group: '电气计算', desc: '计算电池包等效内阻与最大外短电流，录入厂家保护曲线并输出人工校核分析及 PDF 报告。', render: renderModule,
+    captureDraft() {
+      const data = collectAll();
+      delete data.savedAt;
+      // Unlike exported valid points, drafts must retain empty/half-filled rows too.
+      data.curves = Array.from(hostRef.querySelectorAll('#cc-curves .curve-block')).map((block) => ({
+        name: block.querySelector('.cc-name').value, color: block.querySelector('.cc-color').value,
+        points: Array.from(block.querySelectorAll('.pt-row')).map((row) => [row.querySelector('.pt-i').value, row.querySelector('.pt-t').value]),
+        pasteOpen: block.querySelector('.paste-box').style.display !== 'none',
+      }));
+      return data;
+    },
+    restoreDraft(data) {
+      applyAll(data);
+      hostRef.querySelectorAll('#cc-curves .curve-block').forEach((block, index) => {
+        block.querySelector('.paste-box').style.display = data.curves[index]?.pasteOpen ? 'block' : 'none';
+      });
+    },
+    refreshDraft: updateBattery,
+  });
 })();

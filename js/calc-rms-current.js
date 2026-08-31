@@ -32,6 +32,7 @@
 
   T.register({
     id: 'rms-current',
+    refreshDraft: parseAndCalc,
     title: 'RMS 电流 / 线径估算',
     icon: '🔀',
     group: '电气计算',

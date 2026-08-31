@@ -677,6 +677,17 @@
 
   ElectricalToolkit.register({
     id: 'sor-generator',
+    captureDraft: () => clone(state),
+    restoreDraft(saved) {
+      const next = defaultState();
+      next.meta = { ...next.meta, ...saved.meta };
+      Object.keys(next.fields).forEach((id) => { if (Object.prototype.hasOwnProperty.call(saved.fields || {}, id)) next.fields[id] = saved.fields[id]; });
+      Object.keys(next.tables).forEach((id) => { if (Array.isArray(saved.tables?.[id])) next.tables[id] = clone(saved.tables[id]); });
+      next.cellImages = clone(saved.cellImages || {});
+      next.attachments = clone(saved.attachments || []);
+      state = next;
+      render();
+    },
     title: 'SOR 文件生成器',
     group: '工程文档',
     desc: '按公开版 SOR 模板逐章、逐表填写，生成 A4 Word/PDF，并支持 JSON 续填与附件。',

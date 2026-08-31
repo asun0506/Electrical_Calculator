@@ -50,6 +50,7 @@
 
   T.register({
     id: 'busbar-temp',
+    refreshDraft: calc,
     title: '汇流排温升',
     icon: '🌡️',
     group: '电气计算',

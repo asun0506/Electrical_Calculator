@@ -101,6 +101,7 @@
 
   function saveState() {
     clearTimeout(saveTimer);
+    if (window.CalculatorDrafts) return; // Unified observer stores the full project (including images) in IndexedDB.
     saveTimer = setTimeout(() => {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -112,6 +113,7 @@
 
   function persistNow() {
     clearTimeout(saveTimer);
+    if (window.CalculatorDrafts) return true;
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       return true;
@@ -248,6 +250,8 @@
             <button class="btn btn-ghost" data-action="export-json">导出 JSON</button>
             <button class="btn btn-ghost" data-action="export-word">导出 Word (.doc)</button>
             <button class="btn btn-primary" data-action="export-pdf">导出 PDF（打印）</button>
+            <button class="btn btn-ghost" data-action="export-word-en">导出英文 Word (.doc)</button>
+            <button class="btn btn-ghost" data-action="export-pdf-en">导出英文 PDF</button>
             <button class="btn btn-del" data-action="clear-project">清空当前校核</button>
             <input class="iec-json-file" type="file" accept="application/json,.json">
           </div>
@@ -493,6 +497,8 @@
       try { localStorage.removeItem(STORAGE_KEY); } catch (error) { /* ignore */ }
       persistNow();
     }
+    else if (action === 'export-pdf-en') return exportPdf('en');
+    else if (action === 'export-word-en') return exportWord('en');
     else if (action === 'export-pdf') return exportPdf();
     else if (action === 'export-word') return exportWord();
     else return;
@@ -518,52 +524,55 @@
     reader.readAsDataURL(file);
   }
 
-  function reportDimensionRows(level, summary) {
-    if (!level.dimensions.length) return '<tr><td colspan="9">未建立关键尺寸</td></tr>';
+  function reportDimensionRows(level, summary, lang = 'zh') {
+    const tr = T.reportLanguage(lang);
+    if (!level.dimensions.length) return tr('<tr><td colspan="9">未建立关键尺寸</td></tr>');
     return level.dimensions.map((dim, index) => {
       const r = summary.results[index];
       const status = r.complete ? (r.pass ? '通过' : '不通过') : '待输入';
       const tol = dim.toleranceMode === 'chain'
-        ? `±${f(r.selectedTolerance)} (${verificationLabel(dim)})<small>${toleranceReferences(r)}</small>`
+        ? `±${f(r.selectedTolerance)} (${tr(verificationLabel(dim))})<small>${tr(toleranceReferences(r))}</small>`
         : `${f(r.lower)} / +${f(r.upper)}`;
       const image = dim.image ? `<img class="report-image" src="${dim.image}" alt="尺寸截图">` : '—';
-      return `<tr><td>${index + 1}</td><td>${E.escapeHtml(dim.name || '未命名')}</td><td>${image}</td><td>${dim.kind === 'creepage' ? '爬电距离' : '电气间隙'}</td><td>${f(r.nominal)}</td><td>${tol}</td><td>${f(r.minimum)}</td><td>${f(r.spec)}</td><td class="report-${status === '通过' ? 'pass' : status === '不通过' ? 'fail' : 'pending'}">${status}</td></tr>`;
+      return tr`<tr><td>${index + 1}</td><td>${E.escapeHtml(dim.name || tr('未命名'))}</td><td>${image}</td><td>${tr(dim.kind === 'creepage' ? '爬电距离' : '电气间隙')}</td><td>${f(r.nominal)}</td><td>${tol}</td><td>${f(r.minimum)}</td><td>${f(r.spec)}</td><td class="report-${status === '通过' ? 'pass' : status === '不通过' ? 'fail' : 'pending'}">${tr(status)}</td></tr>`;
     }).join('');
   }
 
-  function reportChainDetails(level, summary) {
+  function reportChainDetails(level, summary, lang = 'zh') {
+    const tr = T.reportLanguage(lang);
     return level.dimensions.map((dim, dimIndex) => {
       if (dim.toleranceMode !== 'chain') return '';
       const r = summary.results[dimIndex];
-      const rows = r.validParts.map((part) => `<tr><td>${E.escapeHtml(part.name || '尺寸')}</td><td>${f(part.size)}</td><td>${f(part.tolerance)}</td><td>${E.escapeHtml((TOL_TYPES[part.type] || TOL_TYPES.custom).label)}</td><td>${part.direction > 0 ? '增环' : '减环'}</td><td>${f(part.factor)}</td><td>${f(part.contribution)}</td></tr>`).join('');
-      const chart = r.validParts.length && r.sigma > 0 ? T.normalChart({ title: `${E.escapeHtml(dim.name || '关键尺寸')} — ${verificationLabel(dim)} 公差带`, mean: r.nominal, sigma: r.sigma, tol: r.selectedTolerance, width: 480, height: 250, note: `当前判定：${verificationLabel(dim)} ±${f(r.selectedTolerance)} mm；σ = ${f(r.sigma)} mm；${toleranceReferences(r)} mm。` }) : '<div class="report-chart-empty">尺寸链不完整，暂无分布图</div>';
-      return `<div class="report-chain"><h4>${E.escapeHtml(dim.name || '关键尺寸')} — 尺寸链明细与公差分布</h4>
+      const rows = r.validParts.map((part) => tr`<tr><td>${E.escapeHtml(part.name || (lang === 'en' ? 'Dimension' : '尺寸'))}</td><td>${f(part.size)}</td><td>${f(part.tolerance)}</td><td>${E.escapeHtml(tr((TOL_TYPES[part.type] || TOL_TYPES.custom).label))}</td><td>${tr(part.direction > 0 ? '增环' : '减环')}</td><td>${f(part.factor)}</td><td>${f(part.contribution)}</td></tr>`).join('');
+      const chart = r.validParts.length && r.sigma > 0 ? T.normalChart({ lang, title: tr`${dim.name || tr('关键尺寸')} — ${tr(verificationLabel(dim))} 公差带`, mean: r.nominal, sigma: r.sigma, tol: r.selectedTolerance, width: 480, height: 250, note: tr`当前判定：${tr(verificationLabel(dim))} ±${f(r.selectedTolerance)} mm；σ = ${f(r.sigma)} mm；${tr(toleranceReferences(r))} mm。` }) : tr('<div class="report-chart-empty">尺寸链不完整，暂无分布图</div>');
+      return tr`<div class="report-chain"><h4>${E.escapeHtml(dim.name || tr('关键尺寸'))} — 尺寸链明细与公差分布</h4>
         <table class="report-chain-layout"><colgroup><col style="width:57%"><col style="width:43%"></colgroup><tr>
-          <td class="report-chain-table-cell"><table class="report-chain-table"><thead><tr><th>尺寸名</th><th>尺寸/mm</th><th>公差/mm</th><th>类型</th><th>方向</th><th>系数</th><th>贡献/mm</th></tr></thead><tbody>${rows || '<tr><td colspan="7">尚未填写完整尺寸链</td></tr>'}</tbody></table></td>
+          <td class="report-chain-table-cell"><table class="report-chain-table"><thead><tr><th>尺寸名</th><th>尺寸/mm</th><th>公差/mm</th><th>类型</th><th>方向</th><th>系数</th><th>贡献/mm</th></tr></thead><tbody>${rows || tr('<tr><td colspan="7">尚未填写完整尺寸链</td></tr>')}</tbody></table></td>
           <td class="report-chain-chart-cell">${chart}</td>
         </tr></table></div>`;
     }).join('');
   }
 
-  function buildReport() {
+  function buildReport(lang = 'zh') {
+    const tr = T.reportLanguage(lang);
     const summaries = state.levels.map(layerSummary);
     const anyFail = summaries.some((item) => item.status === 'fail' || item.status === 'invalid');
     const allPass = summaries.every((item) => item.status === 'pass');
     const overall = anyFail ? '不通过' : allPass ? '通过' : '待完成';
-    return `
-      <article class="iec-report">
-        <header><div><p>ENGINEERING VERIFICATION REPORT</p><h1>电气间隙 / 爬电距离系统设计校核报告</h1></div><strong class="report-overall ${overall === '通过' ? 'report-pass' : overall === '不通过' ? 'report-fail' : 'report-pending'}">${overall}</strong></header>
+    return tr`
+      <article class="iec-report" lang="${lang}">
+        <header><div><p>ENGINEERING VERIFICATION REPORT</p><h1>电气间隙 / 爬电距离系统设计校核报告</h1></div><strong class="report-overall ${overall === '通过' ? 'report-pass' : overall === '不通过' ? 'report-fail' : 'report-pending'}">${tr(overall)}</strong></header>
         <table class="report-meta"><tr><th>项目名称</th><td>${E.escapeHtml(state.project.name)}</td><th>项目编号</th><td>${E.escapeHtml(state.project.number || '—')}</td></tr><tr><th>编制人</th><td>${E.escapeHtml(state.project.author || '—')}</td><th>日期</th><td>${E.escapeHtml(state.project.date || today())}</td></tr><tr><th>参考标准</th><td>${E.escapeHtml(state.project.standard)}</td><th>判定方法</th><td>关键尺寸逐条选择（默认 RSS 3σ）</td></tr></table>
         ${state.levels.map((level, index) => {
           const item = summaries[index];
           const s = item.standard;
-          return `<section class="report-level"><h2><span>${level.code}</span>${level.name}校核 — ${statusLabel(item.status)}</h2>
-            <table class="report-boundary"><tr><th>工作电压</th><td>${E.escapeHtml(level.voltage)} V</td><th>海拔</th><td>${E.escapeHtml(level.altitude)} m</td><th>污染等级</th><td>${E.escapeHtml(level.pollution)}</td><th>材料组别</th><td>${E.escapeHtml(level.material)}</td></tr>${s.valid ? `<tr><th>Uimp</th><td>${f(s.impulseKV)} kV</td><th>电气间隙标准</th><td>${f(s.clearance)} mm</td><th>爬电距离标准</th><td>${f(s.creepage)} mm</td><th>海拔系数</th><td>${f(s.altitudeFactor)}</td></tr>` : `<tr><td colspan="8" class="report-fail">${E.escapeHtml(s.error)}</td></tr>`}</table>
-            <table class="report-checks"><thead><tr><th>#</th><th>关键尺寸</th><th>截图</th><th>类别</th><th>名义/mm</th><th>公差/mm</th><th>最小/mm</th><th>标准/mm</th><th>结论</th></tr></thead><tbody>${reportDimensionRows(level, item)}</tbody></table>
-            ${reportChainDetails(level, item)}
+          return tr`<section class="report-level"><h2><span>${level.code}</span>${E.escapeHtml(level.name === LEVELS.find((item) => item.id === level.id)?.name ? tr(level.name) : level.name)}校核 — ${tr(statusLabel(item.status))}</h2>
+            <table class="report-boundary"><tr><th>工作电压</th><td>${E.escapeHtml(level.voltage)} V</td><th>海拔</th><td>${E.escapeHtml(level.altitude)} m</td><th>污染等级</th><td>${E.escapeHtml(level.pollution)}</td><th>材料组别</th><td>${E.escapeHtml(level.material)}</td></tr>${s.valid ? tr`<tr><th>Uimp</th><td>${f(s.impulseKV)} kV</td><th>电气间隙标准</th><td>${f(s.clearance)} mm</td><th>爬电距离标准</th><td>${f(s.creepage)} mm</td><th>海拔系数</th><td>${f(s.altitudeFactor)}</td></tr>` : tr`<tr><td colspan="8" class="report-fail">${E.escapeHtml(tr(s.error))}</td></tr>`}</table>
+            <table class="report-checks"><thead><tr><th>#</th><th>关键尺寸</th><th>截图</th><th>类别</th><th>名义/mm</th><th>公差/mm</th><th>最小/mm</th><th>标准/mm</th><th>结论</th></tr></thead><tbody>${reportDimensionRows(level, item, lang)}</tbody></table>
+            ${reportChainDetails(level, item, lang)}
           </section>`;
         }).join('')}
-        <section class="report-conclusion"><h2>汇总结论</h2><p>系统总体结论：<strong>${overall}</strong>。尺寸链默认按 RSS 3σ 判定，并允许每条关键尺寸独立选择 RSS 4σ、RSS 6σ 或极值法。RSS 法假设各尺寸环节独立且近似正态分布；极值法按公差贡献绝对值累加。具体判定方法与 3σ/4σ/6σ/极值参考值见各条记录。</p><ul>${state.levels.map((level, index) => `<li>${level.name}：${statusLabel(summaries[index].status)}，完成 ${summaries[index].completed}/${level.dimensions.length} 条，不通过 ${summaries[index].failed} 条。</li>`).join('')}</ul></section>
+        <section class="report-conclusion"><h2>汇总结论</h2><p>系统总体结论：<strong>${tr(overall)}</strong>。尺寸链默认按 RSS 3σ 判定，并允许每条关键尺寸独立选择 RSS 4σ、RSS 6σ 或极值法。RSS 法假设各尺寸环节独立且近似正态分布；极值法按公差贡献绝对值累加。具体判定方法与 3σ/4σ/6σ/极值参考值见各条记录。</p><ul>${state.levels.map((level, index) => tr`<li>${E.escapeHtml(level.name === LEVELS.find((item) => item.id === level.id)?.name ? tr(level.name) : level.name)}：${tr(statusLabel(summaries[index].status))}，完成 ${summaries[index].completed}/${level.dimensions.length} 条，不通过 ${summaries[index].failed} 条。</li>`).join('')}</ul></section>
         <footer>本报告由电气工程师综合计算器生成。标准表格、绝缘类型及具体产品要求应由工程师在设计冻结前复核。</footer>
       </article>`;
   }
@@ -583,13 +592,19 @@
     return `${base}_${state.project.date || today()}.${ext}`;
   }
 
-  function exportPdf() {
+  function exportPdf(lang = 'zh') {
     const root = document.createElement('div');
     root.className = 'iec-print-root';
-    root.innerHTML = `<style>${reportStyle()}</style>${buildReport()}`;
+    root.innerHTML = `<style>${reportStyle()}</style>${buildReport(lang)}`;
     document.body.appendChild(root);
     document.body.classList.add('iec-printing');
+    const oldTitle = document.title;
+    document.title = lang === 'en' ? 'Clearance and Creepage Verification Report' : '电气间隙与爬电距离校核报告';
+    let cleaned = false;
     const cleanup = () => {
+      if (cleaned) return;
+      cleaned = true;
+      document.title = oldTitle;
       document.body.classList.remove('iec-printing');
       root.remove();
       window.removeEventListener('afterprint', cleanup);
@@ -599,13 +614,13 @@
     setTimeout(cleanup, 2000);
   }
 
-  function exportWord() {
-    const html = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${E.escapeHtml(state.project.name)}</title><style>${reportStyle()} @page Section1{size:841.9pt 595.3pt;mso-page-orientation:landscape;margin:28.35pt}.Section1{page:Section1}</style></head><body><div class="Section1">${buildReport()}</div></body></html>`;
+  function exportWord(lang = 'zh') {
+    const html = `<!DOCTYPE html><html lang="${lang}" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head><meta charset="utf-8"><title>${E.escapeHtml(state.project.name)}</title><style>${reportStyle()} @page Section1{size:841.9pt 595.3pt;mso-page-orientation:landscape;margin:28.35pt}.Section1{page:Section1}</style></head><body><div class="Section1">${buildReport(lang)}</div></body></html>`;
     const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = reportFilename('doc');
+    link.download = lang === 'en' ? reportFilename('doc').replace(/\.doc$/, '_EN.doc') : reportFilename('doc');
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -651,6 +666,9 @@
 
   T.register({
     id: 'iec60664',
+    captureDraft: () => JSON.parse(JSON.stringify(state)),
+    restoreDraft(saved) { state = normalize(saved); renderAll(); },
+    resetDraft() { state = defaultState(); persistNow(); renderAll(); },
     replace: true,
     title: '电气间隙/爬电距离',
     icon: '⚡',

@@ -112,6 +112,7 @@
           <label class="btn cd-file-btn">导入 JSON<input id="cdImportJson" type="file" accept="application/json,.json"></label>
           <button type="button" class="btn danger" id="cdClear">一键清空</button>
           <button type="button" class="btn primary" id="cdExportPdf">打印 / 导出 PDF</button>
+          <button type="button" class="btn" id="cdExportPdfEn">导出英文 PDF</button>
         </div>
       </section>
 
@@ -163,7 +164,8 @@
     hostRef.querySelector('#cdExportJson').addEventListener('click', exportJson);
     hostRef.querySelector('#cdImportJson').addEventListener('change', importJson);
     hostRef.querySelector('#cdClear').addEventListener('click', clearProject);
-    hostRef.querySelector('#cdExportPdf').addEventListener('click', exportPdf);
+    hostRef.querySelector('#cdExportPdf').addEventListener('click', () => exportPdf());
+    hostRef.querySelector('#cdExportPdfEn').addEventListener('click', () => exportPdf('en'));
   }
 
   function handleRowInput(event) {
@@ -309,9 +311,10 @@
     return `${E.fmtExact(valueOhm * unit.factor, 6)} ${unit.label}`;
   }
 
-  function resultTable(result, report = false) {
-    return `<table class="param-table cd-result-table"><thead><tr><th>引用 / 名称</th><th>材质</th><th>长度</th><th>截面</th><th>温度</th><th>数量关系</th><th>单根电阻</th><th>折算电阻</th>${report ? '<th>附图</th>' : ''}</tr></thead><tbody>${result.segments.map((segment) => `<tr>
-      <td><b>R${segment.index}</b><br>${esc(segment.item.name || '未命名')}</td><td>${esc(segment.material.name)}</td><td>${E.fmtExact(segment.lengthMm)} mm</td><td>${E.fmtExact(segment.areaMm2)} mm²<br>${E.fmtExact(segment.widthMm)}×${E.fmtExact(segment.heightMm)}</td><td>${E.fmtExact(segment.temperatureC)} °C</td><td>${segment.quantity} 根<br>${segment.item.quantityRelation === 'series' ? '串联 nR' : '并联 R/n'}</td><td>${resistanceText(segment.singleResistance)}</td><td><b>${resistanceText(segment.effectiveResistance)}</b></td>${report ? `<td>${segment.item.image ? `<img class="cd-report-image" src="${esc(segment.item.image.dataUrl)}" alt="${esc(segment.item.image.name)}">` : '—'}</td>` : ''}
+  function resultTable(result, report = false, lang = 'zh') {
+    const r = T.reportLanguage(lang);
+    return r`<table class="param-table cd-result-table"><thead><tr><th>引用 / 名称</th><th>材质</th><th>长度</th><th>截面</th><th>温度</th><th>数量关系</th><th>单根电阻</th><th>折算电阻</th>${report ? r('<th>附图</th>') : ''}</tr></thead><tbody>${result.segments.map((segment) => r`<tr>
+      <td><b>R${segment.index}</b><br>${esc(segment.item.name || r('未命名'))}</td><td>${esc(r(segment.material.name))}</td><td>${E.fmtExact(segment.lengthMm)} mm</td><td>${E.fmtExact(segment.areaMm2)} mm²<br>${E.fmtExact(segment.widthMm)}×${E.fmtExact(segment.heightMm)}</td><td>${E.fmtExact(segment.temperatureC)} °C</td><td>${segment.quantity} 根<br>${r(segment.item.quantityRelation === 'series' ? '串联 nR' : '并联 R/n')}</td><td>${resistanceText(segment.singleResistance)}</td><td><b>${resistanceText(segment.effectiveResistance)}</b></td>${report ? `<td>${segment.item.image ? `<img class="cd-report-image" src="${esc(segment.item.image.dataUrl)}" alt="${esc(segment.item.image.name)}">` : '—'}</td>` : ''}
     </tr>`).join('')}</tbody></table>`;
   }
 
@@ -387,26 +390,27 @@
     render();
   }
 
-  function reportHtml(result) {
-    const conclusion = result.passed == null ? '未设置限值，仅计算' : (result.passed ? '合格' : '不合格');
-    return `<article class="cd-report"><header><h1>导体电阻校核报告</h1><p>生成时间：${new Date().toLocaleString('zh-CN')}</p></header>
-      <section><h2>1. 校核设置</h2><table><tr><th>组合表达式</th><td>${esc(state.expression)}</td><th>显示单位</th><td>${RESISTANCE_UNITS[state.displayUnit].label}</td></tr><tr><th>总电阻上限</th><td>${result.limitOhm == null ? '未设置' : resistanceText(result.limitOhm)}</td><th>结论</th><td class="${result.passed === false ? 'fail' : 'pass'}">${conclusion}</td></tr></table></section>
-      <section><h2>2. 导体段明细</h2>${resultTable(result, true)}</section>
+  function reportHtml(result, lang = 'zh') {
+    const r = T.reportLanguage(lang);
+    const conclusion = r(result.passed == null ? '未设置限值，仅计算' : (result.passed ? '合格' : '不合格'));
+    return r`<article class="cd-report" lang="${lang}"><header><h1>导体电阻校核报告</h1><p>生成时间：${new Date().toLocaleString(lang === 'en' ? 'en-GB' : 'zh-CN')}</p></header>
+      <section><h2>1. 校核设置</h2><table><tr><th>组合表达式</th><td>${esc(state.expression)}</td><th>显示单位</th><td>${RESISTANCE_UNITS[state.displayUnit].label}</td></tr><tr><th>总电阻上限</th><td>${result.limitOhm == null ? r('未设置') : resistanceText(result.limitOhm)}</td><th>结论</th><td class="${result.passed === false ? 'fail' : 'pass'}">${conclusion}</td></tr></table></section>
+      <section><h2>2. 导体段明细</h2>${resultTable(result, true, lang)}</section>
       <section><h2>3. 计算结果</h2><p class="cd-report-total">组合总电阻：<b>${resistanceText(result.totalResistance)}</b></p><p>组合总电导：${E.fmtExact(1 / result.totalResistance, 6)} S</p><p>计算依据：R=ρ(T)×L/A；同规格导体按所选数量关系折算，再依表达式进行串并联组合。</p></section>
     </article>`;
   }
 
-  function exportPdf() {
+  function exportPdf(lang = 'zh') {
     let result;
     try { result = computeProject(); } catch (error) { window.alert(`无法生成报告：${error.message}`); return; }
     const shell = hostRef.querySelector('#cdReportShell');
-    shell.innerHTML = reportHtml(result);
+    shell.innerHTML = reportHtml(result, lang);
     shell.classList.add('active');
     const originalParent = shell.parentNode;
     const originalNextSibling = shell.nextSibling;
     document.body.appendChild(shell);
     const oldTitle = document.title;
-    document.title = '导体电阻校核报告';
+    document.title = T.reportLanguage(lang)('导体电阻校核报告');
     const restore = () => {
       document.title = oldTitle;
       shell.classList.remove('active');
@@ -427,6 +431,13 @@
 
   T.register({
     id: 'conductor',
+    captureDraft: () => clone(state),
+    restoreDraft(saved) {
+      if (!Array.isArray(saved.conductors) || !saved.conductors.length) throw new Error('导体草稿缺少导体段');
+      state = { ...defaultState(), ...clone(saved) };
+      render();
+    },
+    refreshDraft: calculateAndRender,
     title: '导体电阻',
     icon: '🧪',
     group: '电气计算',

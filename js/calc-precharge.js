@@ -15,6 +15,7 @@
 
   T.register({
     id: 'precharge',
+    refreshDraft: calc,
     title: '预充回路匹配',
     icon: '🔋',
     group: '电气计算',
