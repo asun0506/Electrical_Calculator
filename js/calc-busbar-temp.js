@@ -7,9 +7,9 @@
  *
  * 关键逻辑（对齐表格）：
  *   - 内部时间步长 Δt 可在界面设置（对应 Sheet2「内部时间步长」），示例 0.1 s，复现原表用 1 s。
- *   - 从 t=0 起以 Δt 固定步长逐拍递推；电流保持规则：同一电流从该时间点保持到下一条数据生效
+ *   - 从 Map 首个时间点起以 Δt 固定步长逐拍递推；电流保持规则：同一电流从该时间点保持到下一条数据生效
  *     （I_eff(t) = 最后一个 t_i ≤ t 的输入点电流）。
- *   - 可计算步数 N = ceil(输入结束时间 / Δt)，可计算结束时间 = N·Δt，覆盖整个输入时间范围。
+ *   - 可计算步数 N = ceil(Map 时间跨度 / Δt)，覆盖整个输入时间范围。
  *     （注：旧表“每行固定推进 1 秒”的 floor(输入结束时间) 只在 Δt=1 s 时成立；
  *       0.1 s 采样的满时长输入必须除以 Δt，否则只算到十分之一。）
  *   - 温度取上一采样时刻 Tₙ₋₁。
@@ -27,6 +27,10 @@
     copper: { name: '纯铜 Cu', rho: 1.78e-8, C: 394, dens: 8900 },
     aluminum: { name: '纯铝 Al', rho: 2.83e-8, C: 879, dens: 2700 },
   };
+
+  const CURRENT_DENSITY = { copper: 5, aluminum: 3.9 };
+  const WIRE_SIZES = [0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120, 150, 185, 240, 300];
+  const METRIC_EQUIVALENTS = [0.05, 0.08, 0.14, 0.22, 0.35, 0.5, 0.75, 1, 1.5, 2.5, 4, 6, 10, 16, 25, 35, 50, 70, 95, 120];
 
   /** 解析电流–时间文本：[[t,I],...]，按 t 排序 */
   function parseData(text) {
@@ -48,21 +52,79 @@
     return pts;
   }
 
+  function awgLabel(gauge) {
+    return gauge === -3 ? '4/0' : gauge === -2 ? '3/0' : gauge === -1 ? '2/0' : gauge === 0 ? '1/0' : String(gauge);
+  }
+
+  function nearestMetric(area) {
+    return METRIC_EQUIVALENTS.reduce((best, item) => Math.abs(item - area) < Math.abs(best - area) ? item : best, METRIC_EQUIVALENTS[0]);
+  }
+
+  function awgRows() {
+    const rows = [];
+    for (let gauge = -3; gauge <= 30; gauge += 1) {
+      const diameterMm = 0.005 * Math.pow(92, (36 - gauge) / 39) * 25.4;
+      const areaMm2 = Math.PI * diameterMm * diameterMm / 4;
+      const copperOhmPerKm = 17.241 / areaMm2;
+      rows.push(`<tr><td><b>${awgLabel(gauge)}</b></td><td>${diameterMm.toFixed(3)}</td><td>${areaMm2 >= 10 ? areaMm2.toFixed(2) : areaMm2.toFixed(3)}</td><td>${copperOhmPerKm.toFixed(copperOhmPerKm >= 10 ? 2 : 3)}</td><td>${nearestMetric(areaMm2)}</td></tr>`);
+    }
+    return rows.join('');
+  }
+
+  function downsample(pts, maxN) {
+    if (!pts || pts.length <= maxN) return pts;
+    const out = [];
+    for (let i = 0; i < maxN; i++) out.push(pts[Math.floor(i * (pts.length - 1) / (maxN - 1))]);
+    return out;
+  }
+
+  function wireRecommendation(minArea) {
+    const size = WIRE_SIZES.find((item) => item >= minArea);
+    return size == null
+      ? { label: '> 300 mm²', note: '需采用并联导体或专用大截面规格' }
+      : { label: `${size} mm²`, note: '向上取常见公制规格' };
+  }
+
+  function currentMetrics(pts) {
+    const duration = pts[pts.length - 1][0] - pts[0][0];
+    let intI2 = 0, intI = 0, peak = 0;
+    for (let k = 0; k < pts.length - 1; k++) {
+      const dt = pts[k + 1][0] - pts[k][0];
+      const i1 = pts[k][1], i2 = pts[k + 1][1];
+      intI2 += ((i1 * i1 + i2 * i2) / 2) * dt;
+      intI += ((i1 + i2) / 2) * dt;
+      peak = Math.max(peak, Math.abs(i1), Math.abs(i2));
+    }
+    return { duration, rms: Math.sqrt(intI2 / duration), average: intI / duration, peak };
+  }
+
+  function readLegacyRmsMap() {
+    const drafts = window.CalculatorDrafts;
+    if (!drafts || drafts.read('busbar-temp')) return null;
+    const legacy = drafts.read('rms-current');
+    const saved = legacy && Array.isArray(legacy.form)
+      ? legacy.form.find((item) => item.id === 'rc-ta')
+      : null;
+    return saved && String(saved.value || '').trim() ? String(saved.value) : null;
+  }
+
+  window.BusbarTempMath = Object.freeze({ parseData, currentMetrics, wireRecommendation });
+
   T.register({
     id: 'busbar-temp',
     refreshDraft: calc,
-    title: '汇流排温升',
+    title: 'RMS 电流 / 线径 / 汇流排温升',
     icon: '🌡️',
     group: '电气计算',
-    desc: '与《汇流排温升计算模型_公式校正版》第三个 Sheet「温升计算」完全一致的算法：内部步长 Δt 固定递推、电流保持规则、可调全部 Sheet2 参数。',
+    desc: '一份电流–时间 Map 同时计算 RMS、适用线径与汇流排瞬态温升，并分别绘制电流和温度曲线。',
 
     render(host) {
       host.innerHTML = `
         <div class="panel">
-          <h3 class="panel-title"><span class="dot"></span>电流–时间数据（Excel 批量粘贴）</h3>
+          <h3 class="panel-title"><span class="dot"></span>1. 电流–时间 Map（Excel 批量粘贴）</h3>
           <div class="paste-box" style="display:block">
             <div class="paste-actions">
-              <span class="paste-hint">从 Excel 复制两列（第一列<b>时间 t (s)</b>、第二列<b>电流 I (A)</b>）粘贴。时间必须递增；同一电流从该时间点保持到下一条数据生效。以内部步长 Δt 固定步进递推，温度取上一采样时刻 Tₙ₋₁。</span>
+              <span class="paste-hint">从 Excel 复制两列（第一列<b>时间 t (s)</b>、第二列<b>电流 I (A)</b>）粘贴。时间必须严格递增。RMS / 平均电流按相邻点线性连接并采用梯形积分；温升递推按阶梯保持，即某点电流保持到下一点生效。</span>
               <button class="btn btn-ghost" id="bb-load-sample" type="button" style="padding:4px 10px;font-size:12px;margin-top:6px">载入表格示例数据（复现 600s=63.15°C）</button>
             </div>
             <textarea class="paste-ta" id="bb-ta" rows="5">0\t223
@@ -71,7 +133,7 @@
         </div>
 
         <div class="panel">
-          <h3 class="panel-title"><span class="dot"></span>汇流排参数（Sheet2）</h3>
+          <h3 class="panel-title"><span class="dot"></span>2. 汇流排参数（Sheet2）</h3>
           <div class="grid cols-4">
             <div class="field">
               <label>材料</label>
@@ -96,28 +158,46 @@
         </div>
 
         <div class="panel">
-          <h3 class="panel-title"><span class="dot"></span>环境与递推参数（Sheet2）</h3>
+          <h3 class="panel-title"><span class="dot"></span>3. 环境、递推与线径推荐参数</h3>
           <div class="grid cols-4">
             <div class="field"><label>对流换热系数 h</label><div class="input-row"><input id="bb-hc" type="number" value="9" min="0" step="any"><span class="unit">W/(m²·K)</span></div></div>
             <div class="field"><label>环境温度 Tamb</label><div class="input-row"><input id="bb-tamb" type="number" value="50" step="any"><span class="unit">°C</span></div></div>
             <div class="field"><label>初始温度 T0</label><div class="input-row"><input id="bb-t0" type="number" value="50" step="any"><span class="unit">°C</span></div></div>
             <div class="field"><label>内部时间步长 Δt</label><div class="input-row"><input id="bb-dt" type="number" value="0.1" min="0.0001" step="any"><span class="unit">s</span></div></div>
           </div>
-          <div class="note" style="margin-top:12px">h 取值参考：无绝缘层、塑料壳体内部、自然冷却取 7~10；大面积绝缘层取 5~9；距箱体/电芯近可取大；长度长可取小。<b>内部时间步长 Δt</b> 与表格 Sheet2 一致（示例 0.1 s，复现原表用 1 s）；计算覆盖整个输入时间范围：可计算步数 N = ceil(输入结束时间 / Δt)。</div>
+          <div class="grid cols-2" style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--border)">
+            <div class="field"><label>铜导线持续载流密度 J<sub>Cu</sub></label><div class="input-row"><input id="bb-j-cu" type="number" value="${CURRENT_DENSITY.copper}" min="0.01" step="any"><span class="unit">A/mm²</span></div></div>
+            <div class="field"><label>铝导线持续载流密度 J<sub>Al</sub></label><div class="input-row"><input id="bb-j-al" type="number" value="${CURRENT_DENSITY.aluminum}" min="0.01" step="any"><span class="unit">A/mm²</span></div></div>
+          </div>
+          <div class="note" style="margin-top:12px">h 取值参考：无绝缘层、塑料壳体内部、自然冷却取 7~10；大面积绝缘层取 5~9；距箱体/电芯近可取大；长度长可取小。<b>内部时间步长 Δt</b> 与表格 Sheet2 一致（示例 0.1 s，复现原表用 1 s）；计算覆盖整个 Map：可计算步数 N = ceil(Map 时间跨度 / Δt)。</div>
           <div class="btn-row">
-            <button class="btn btn-primary" id="bb-calc">计算温升</button>
+            <button class="btn btn-primary" id="bb-calc">计算 RMS、线径与温升</button>
           </div>
         </div>
 
         <div class="panel" id="bb-result" style="display:none"></div>
+
+        <details class="panel">
+          <summary style="cursor:pointer;font-weight:700">AWG 线规换算对照表</summary>
+          <p style="margin:12px 0;color:var(--text-muted);font-size:13px">按实心圆导体 AWG 几何定义换算；直流电阻按 20 °C 退火铜电阻率估算。绞线外径、镀层、温度与结构会使实际值不同，请以线缆规格书为准。</p>
+          <div style="overflow:auto"><table class="param-table" style="min-width:720px"><thead><tr><th>AWG</th><th>导体直径/mm</th><th>截面积/mm²</th><th>铜导体电阻/Ω·km⁻¹</th><th>邻近公制截面积/mm²</th></tr></thead><tbody>${awgRows()}</tbody></table></div>
+          <div class="note">换算关系：d(in)=0.005×92<sup>(36-AWG)/39</sup>，A=πd²/4。4/0、3/0、2/0、1/0 分别按 AWG -3、-2、-1、0 计算。</div>
+        </details>
       `;
+
+      const legacyMap = readLegacyRmsMap();
+      if (legacyMap) {
+        document.getElementById('bb-ta').value = legacyMap;
+        const hint = document.getElementById('bb-ta').closest('.panel').querySelector('.paste-hint');
+        if (hint) hint.insertAdjacentHTML('beforeend', '<br><b>已自动带入原“RMS 电流 / 线径估算”模块的上次 Map。</b>');
+      }
 
       document.getElementById('bb-mat').addEventListener('change', () => {
         document.getElementById('bb-custom').style.display =
           document.getElementById('bb-mat').value === 'custom' ? 'block' : 'none';
         calc();
       });
-      ['bb-ta', 'bb-w', 'bb-h', 'bb-len', 'bb-rho', 'bb-c', 'bb-dens', 'bb-hc', 'bb-tamb', 'bb-t0', 'bb-dt', 'bb-mat']
+      ['bb-ta', 'bb-w', 'bb-h', 'bb-len', 'bb-rho', 'bb-c', 'bb-dens', 'bb-hc', 'bb-tamb', 'bb-t0', 'bb-dt', 'bb-j-cu', 'bb-j-al', 'bb-mat']
         .forEach((id) => {
           const el = document.getElementById(id);
           el.addEventListener('input', calc);
@@ -177,8 +257,10 @@
     const Tamb = E.parseNum(document.getElementById('bb-tamb').value);
     const T0 = E.parseNum(document.getElementById('bb-t0').value);
     const dt = E.parseNum(document.getElementById('bb-dt').value);
-    if (![wmm, tmm, Lmm, hc, Tamb, T0, dt].every((v) => v != null)) return bad('请填写所有参数。');
-    if (wmm <= 0 || tmm <= 0 || Lmm <= 0 || hc <= 0 || dt <= 0) return bad('截面宽/厚、长度、换热系数、内部步长须 > 0。');
+    const jCu = E.parseNum(document.getElementById('bb-j-cu').value);
+    const jAl = E.parseNum(document.getElementById('bb-j-al').value);
+    if (![wmm, tmm, Lmm, hc, Tamb, T0, dt, jCu, jAl].every((v) => v != null)) return bad('请填写所有参数。');
+    if (wmm <= 0 || tmm <= 0 || Lmm <= 0 || hc <= 0 || dt <= 0 || jCu <= 0 || jAl <= 0) return bad('截面宽/厚、长度、换热系数、内部步长及载流密度须 > 0。');
 
     const pts = parseData(document.getElementById('bb-ta').value);
     if (pts.length < 2) return bad('解析到的电流–时间数据点不足 2 个。');
@@ -194,12 +276,15 @@
     const R = rho * L / area;              // Ω
     const mCp = mass * C;                  // J/K
 
-    // 可计算步数 N = ceil(输入结束时间 / Δt)，覆盖整个输入时间范围
+    // 可计算步数 N = ceil(Map 时间跨度 / Δt)，覆盖整个输入时间范围
     // （旧表“每行固定推进 1 秒”的 floor(输入结束时间) 只在 Δt=1s 时成立；
     //   对 0.1s 采样的满时长输入，必须除以 Δt 才能算满全程）
+    const tMin = pts[0][0];
     const tMax = pts[pts.length - 1][0];
-    const N = Math.max(1, Math.ceil(tMax / dt));
-    const tEnd = N * dt;                   // 可计算结束时间
+    const mapDuration = tMax - tMin;
+    if (mapDuration <= 0) return bad('电流 Map 的时间跨度必须大于 0。');
+    const N = Math.max(1, Math.ceil(mapDuration / dt));
+    const tEnd = tMin + N * dt;            // 可计算结束时间
 
     // 与 Sheet3 一致的固定步长递推
     const points = [];
@@ -208,13 +293,13 @@
     const joule0 = I0 * I0 * R;
     const conv0 = hc * surface * (T0 - Tamb);
     points.push({
-      time: 0, current: I0, temperature: Tcur, rise: Tcur - Tamb,
+      time: tMin, current: I0, temperature: Tcur, rise: Tcur - Tamb,
       joule: joule0, conv: conv0, net: joule0 - conv0, step: 0,
     });
     // 用指针推进的电流查找（输入点数大时避免 O(N²) 全表扫描）
     let ptr = 0;
     for (let k = 1; k <= N; k++) {
-      const tNow = k * dt;
+      const tNow = tMin + k * dt;
       while (ptr + 1 < pts.length && pts[ptr + 1][0] <= tNow + 1e-12) ptr++;
       const I = pts[ptr][1];
       const joule = I * I * R;
@@ -228,22 +313,32 @@
     }
 
     // 汇总
-    let tMaxT = T0, tAt = 0;
+    let tMaxT = T0, tAt = tMin;
     points.forEach((p) => { if (p.temperature > tMaxT) { tMaxT = p.temperature; tAt = p.time; } });
     const riseMax = tMaxT - Tamb;
     const tFinal = points[points.length - 1].temperature;
 
-    // 稳态参考（用 RMS 电流，按输入数据梯形积分）
-    let intI2 = 0;
-    for (let k = 0; k < pts.length - 1; k++) {
-      const dtt = pts[k + 1][0] - pts[k][0];
-      const i1 = pts[k][1], i2 = pts[k + 1][1];
-      intI2 += ((i1 * i1 + i2 * i2) / 2) * dtt;
-    }
-    const I_rms = tMax > 0 ? Math.sqrt(intI2 / tMax) : 0;
+    // RMS / 平均值按 Map 相邻点线性连接并作梯形积分；分母使用实际时间跨度。
+    const metrics = currentMetrics(pts);
+    const I_rms = metrics.rms;
+    const I_avg = metrics.average;
+    const peak = metrics.peak;
+    const minCu = I_rms / jCu;
+    const minAl = I_rms / jAl;
+    const recCu = wireRecommendation(minCu);
+    const recAl = wireRecommendation(minAl);
     const Tsteady = Tamb + I_rms * I_rms * R / (hc * surface);
 
-    const chart = T.lineChart({
+    const currentChart = T.lineChart({
+      width: 780, height: 360,
+      title: `电流–时间曲线（${pts.length} 个 Map 点）`,
+      x: { label: '时间 t', unit: 's' },
+      y: { label: '电流 I', unit: 'A' },
+      series: [{ name: '输入电流 I(t)', color: '#2563eb', points: downsample(pts, 1000) }],
+      hLines: [{ y: I_avg, color: '#16a34a', label: `平均电流 ${E.fmt(I_avg)} A`, dashed: true }],
+    });
+
+    const temperatureChart = T.lineChart({
       width: 780, height: 420,
       title: `汇流排温升曲线（${matName}，I_rms=${E.fmt(I_rms)} A）`,
       x: { label: '时间 t', unit: 's' },
@@ -270,7 +365,23 @@
     }
 
     box.innerHTML = `
-      <h3 class="panel-title"><span class="dot"></span>温升计算结果</h3>
+      <h3 class="panel-title"><span class="dot"></span>综合计算结果</h3>
+      <h4 style="margin:4px 0 10px">电流 Map 指标</h4>
+      <div class="result-grid">
+        <div class="result-card"><div class="k">RMS 有效电流</div><div class="v">${E.fmt(I_rms)}<small> A</small></div></div>
+        <div class="result-card"><div class="k">平均电流</div><div class="v">${E.fmt(I_avg)}<small> A</small></div></div>
+        <div class="result-card"><div class="k">峰值电流 |I|<sub>max</sub></div><div class="v">${E.fmt(peak)}<small> A</small></div></div>
+        <div class="result-card"><div class="k">Map 时间跨度</div><div class="v">${E.fmt(mapDuration)}<small> s</small></div></div>
+      </div>
+      <h4 style="margin:16px 0 10px">适用线径推荐</h4>
+      <div class="result-grid">
+        <div class="result-card"><div class="k">铜导线最小截面积（${E.fmt(jCu)} A/mm²）</div><div class="v">${E.fmt(minCu)}<small> mm²</small></div><div class="k" style="margin-top:6px">推荐 ${recCu.label} · ${recCu.note}</div></div>
+        <div class="result-card"><div class="k">铝导线最小截面积（${E.fmt(jAl)} A/mm²）</div><div class="v">${E.fmt(minAl)}<small> mm²</small></div><div class="k" style="margin-top:6px">推荐 ${recAl.label} · ${recAl.note}</div></div>
+        <div class="result-card"><div class="k">当前汇流排截面积</div><div class="v">${E.fmt(wmm * tmm)}<small> mm²</small></div><div class="k" style="margin-top:6px">RMS 电流密度 ${E.fmt(I_rms / (wmm * tmm))} A/mm²</div></div>
+      </div>
+      <div class="note" style="margin-top:12px">线径推荐是基于 RMS 热效应与所填持续载流密度的工程初选。正式选型还需按线缆标准、绝缘温度等级、敷设方式、环境温度、电压降、短路热稳定和端子适配校核。</div>
+      <div class="normal-chart-wrap">${currentChart}</div>
+      <h4 style="margin:16px 0 10px">汇流排温升指标</h4>
       <div class="result-grid">
         <div class="result-card"><div class="k">最高温度</div><div class="v">${E.fmt(tMaxT)}<small> °C @ ${E.fmt(tAt)}s</small></div></div>
         <div class="result-card"><div class="k">最大温升（相对环境）</div><div class="v">${E.fmt(riseMax)}<small> K</small></div></div>
@@ -280,13 +391,13 @@
         <div class="result-card"><div class="k">稳态参考（RMS）</div><div class="v">${E.fmt(Tsteady)}<small> °C</small></div></div>
       </div>
       <div class="note" style="margin-top:12px">
-        <strong>派生参数（Sheet2）：</strong>截面积 A = ${E.fmt(area)} m² ｜ 散热面积 S = ${E.fmt(surface)} m² ｜ 质量 m = ${E.fmt(mass)} kg ｜ 电阻 R = ${E.fmt(R)} Ω ｜ 输入结束时间 = ${E.fmt(tMax)} s ｜ 可计算结束时间 = ${E.fmt(tEnd)} s。
+        <strong>派生参数（Sheet2）：</strong>截面积 A = ${E.fmt(area)} m² ｜ 散热面积 S = ${E.fmt(surface)} m² ｜ 质量 m = ${E.fmt(mass)} kg ｜ 电阻 R = ${E.fmt(R)} Ω ｜ Map 范围 = ${E.fmt(tMin)} ~ ${E.fmt(tMax)} s ｜ 可计算结束时间 = ${E.fmt(tEnd)} s。
       </div>
-      <div class="normal-chart-wrap">${chart}</div>
+      <div class="normal-chart-wrap">${temperatureChart}</div>
       <div class="note">
         <strong>说明（与表格第三个 Sheet「温升计算」一致）：</strong>
         固定内部步长 Δt = ${E.fmt(dt)} s 逐拍递推，温度取上一采样时刻：Tₙ = Tₙ₋₁ + [Iₙ²·R − h·S·(Tₙ₋₁−Tamb)]·Δt/(m·Cp)。
-        电流保持规则：同一电流从该时间点保持到下一条数据生效。可计算步数 N = ceil(输入结束时间 / Δt) = ${N}，可计算结束时间 = ${E.fmt(tEnd)} s。
+        电流保持规则：同一电流从该时间点保持到下一条数据生效。可计算步数 N = ceil(Map 时间跨度 / Δt) = ${N}，可计算结束时间 = ${E.fmt(tEnd)} s。
         共 ${points.length} 个计算点${stride > 1 ? `，明细表按步长 ${stride} 抽样显示` : ''}。
         未计接触/焊接电阻、端部导热、辐射及电阻温度系数。
       </div>
