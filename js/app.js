@@ -40,6 +40,7 @@
     'sor-generator': '<path d="M4 2h7l3 3v9H4z"/><path d="M11 2v3h3M6 8h6M6 11h5"/>',
     'engineering-formulas': '<path d="M4 3h10M4 13h10M6 5l3 3-3 3m5-5h3m-3 4h3"/>',
     'standards-library': '<path d="M3 3h5a2 2 0 0 1 2 2v9H5a2 2 0 0 0-2 1V3Zm7 2a2 2 0 0 1 2-2h3v12h-3a2 2 0 0 0-2 1"/>',
+    dfmea: '<path d="M2 3h14v10H2zM5 3v10m4-10v10m4-10v10M2 7h14"/>',
   };
 
   function moduleIcon(id) {
