@@ -19,7 +19,11 @@ assert.ok(system.length > 37, 'missing parent functions are supplemented at syst
 assert.match(system[0].G, /functional de-rate or damage/, 'original requirement detail is retained');
 assert.ok(level2.length >= 110, 'component and former child-level analyses are split into individual second-level rows');
 assert.equal(level3.length, 0, 'the independent third level is removed');
-assert.equal(level2.filter((row) => row.E).length, 97, 'all 97 former third-level analyses are retained exactly once in E/H/L');
+assert.equal(level2.filter((row) => row.E && !row.id.startsWith('L2-EX-')).length, 97, 'all 97 former third-level analyses are retained exactly once in E/H/L');
+assert.equal(lib.additionalAnalysisCount, 130, 'all approved additional child analyses are included');
+const additional = level2.filter((row) => row.id.startsWith('L2-EX-'));
+assert.equal(additional.length, 130);
+assert.ok(additional.every((row) => row.C && row.D && row.E && row.F && row.G && row.H && row.I && row.K && row.L && row.M && row.O), 'additional analyses contain the complete hierarchy and controls');
 assert.ok(system.every((row) => !row.C && !row.F && !row.I), 'system level leaves C/F/I blank');
 assert.equal(new Set(system.map((row) => row.D)).size, 1, 'system D uses one object name');
 assert.ok(system.every((row) => row.D === '电气系统'), 'system object name is unified');
@@ -58,7 +62,12 @@ assert.ok(system.some((row) => row.G === '爬电距离满足IEC 60664'));
   assert.ok(level2.some((row) => row.D === name && row.G.includes('绝缘：500V')));
   assert.ok(level2.some((row) => row.D === name && row.G.includes('耐压：2700V')));
 });
+[['EDM（电源分配单元）','EDM（电源分配单元）绝缘材料'],['保险丝盒','保险丝盒绝缘材料'],['低压线束','低压线束绝缘材料'],['高压线束','高压线束绝缘材料']].forEach(([name,text]) => {
+  assert.ok(level2.some((row) => row.D === name && row.G.includes('绝缘：500V') && row.M.includes(text) && row.M.includes('子零件级：')), `${name} retains component and child insulation controls`);
+});
 assert.ok(lib.rows.every((row) => [row.J,row.N,row.P].every((score) => score >= 1 && score <= 10)), 'S/O/D scores stay in range');
+const expectedAdditionalCounts = {'主继电器':7,'预充继电器':6,'预充电阻':6,'霍尔传感器':7,'EDM铜排':6,'转接PCB':7,'Shunt（电流传感器）':7,'Pyro-fuse':7,'辅助回路保险丝':6,'保险丝盒铜排':6,'低压连接器':7,'线缆':8,'低压接线端子':6,'低压OT端子':6,'水温传感器':7,'高压连接器':12,'高压线缆':11,'互锁低压线缆':8};
+Object.entries(expectedAdditionalCounts).forEach(([name,count]) => assert.equal(additional.filter((row) => row.E === name).length, count, `${name} additional count`));
 const children = new Set(level2.map((row) => row.E).filter(Boolean));
 ['主继电器','预充继电器','预充电阻','霍尔传感器','EDM铜排','转接PCB','Shunt（电流传感器）','Pyro-fuse','辅助回路保险丝','保险丝盒铜排','低压连接器','线缆','低压接线端子','低压OT端子','水温传感器','高压连接器','高压线缆','互锁低压线缆'].forEach((name) => assert.ok(children.has(name), name));
 
