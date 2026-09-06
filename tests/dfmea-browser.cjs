@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const { chromium } = require('playwright');
+const JSZip = require('jszip');
 
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
@@ -57,6 +58,22 @@ const { chromium } = require('playwright');
   await download.saveAs(output);
   assert.ok(fs.statSync(output).size > 10000, 'expanded workbook was exported');
   fs.unlinkSync(output);
+  const englishDownloadEvent = page.waitForEvent('download');
+  await page.getByRole('button', { name: '导出英文DFMEA' }).click();
+  const englishDownload = await englishDownloadEvent;
+  const englishOutput = path.join(__dirname, '..', 'tmp', 'dfmea-english-export.xlsx');
+  await englishDownload.saveAs(englishOutput);
+  const englishZip = await JSZip.loadAsync(fs.readFileSync(englishOutput));
+  const englishXml = await englishZip.file('xl/worksheets/sheet1.xml').async('string');
+  const templateBase64 = await page.evaluate(() => window.DFMEA_TEMPLATE_BASE64);
+  const templateZip = await JSZip.loadAsync(Buffer.from(templateBase64, 'base64'));
+  const templateXml = await templateZip.file('xl/worksheets/sheet1.xml').async('string');
+  const rowsBefore15 = (xml) => (xml.match(/<row\b[^>]*\br="(?:[1-9]|1[0-4])"[\s\S]*?<\/row>/g) || []).join('');
+  assert.equal(rowsBefore15(englishXml), rowsBefore15(templateXml), 'English export preserves all original template/header rows');
+  const dataRows = (englishXml.match(/<row\b[^>]*\br="(?:1[5-9]|[2-9]\d|\d{3,})"[\s\S]*?<\/row>/g) || []).join('');
+  assert.ok(dataRows.length > 10000, 'English DFMEA contains exported analysis rows');
+  assert.ok(!/[\u3400-\u9fff]/.test(dataRows), 'English DFMEA analysis cells contain no Chinese text');
+  fs.unlinkSync(englishOutput);
   const migrated = await page.evaluate(() => {
     const base = window.DFMEA_LIBRARY.rows.find((row) => row.level === 2 && row.E);
     const oldChild = {

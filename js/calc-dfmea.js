@@ -44,7 +44,7 @@
         <div class="df-result-meta"><span id="dfResultCount"></span><span>第一层含附件二${LIB.originalSystemCount}条原始需求及补充父功能；系统级 C/F/I 保持空白。</span></div><div class="df-library-list" id="dfLibraryList"></div>
       </section>
       <section class="panel df-work"><div class="df-section-head"><div><h3>当前DFMEA</h3><p>可横向滚动。支持从Excel复制多格后，在任意单元格直接粘贴；制表符与换行会依次填入右侧和下方单元格。</p></div><div class="df-toolbar"><button type="button" class="btn btn-ghost" data-add-level="1">加入全部系统需求</button><button type="button" class="btn btn-ghost" data-add-level="2">加入全部部件分析</button><button type="button" class="btn btn-ghost" id="dfSort">一键按层级/名称排序</button><button type="button" class="btn btn-ghost" id="dfAddBlank">添加空白行</button></div></div>
-        <div class="df-actionbar"><span id="dfWorkCount"></span><div><button type="button" class="btn btn-ghost" id="dfImportJson">导入JSON</button><button type="button" class="btn btn-ghost" id="dfExportJson">导出JSON</button><button type="button" class="btn btn-primary" id="dfExportXlsx">按原模板导出DFMEA</button><button type="button" class="btn btn-danger" id="dfClear">清空</button><input id="dfJsonFile" type="file" accept="application/json,.json" hidden></div></div>
+        <div class="df-actionbar"><span id="dfWorkCount"></span><div><button type="button" class="btn btn-ghost" id="dfImportJson">导入JSON</button><button type="button" class="btn btn-ghost" id="dfExportJson">导出JSON</button><button type="button" class="btn btn-primary" id="dfExportXlsx">按原模板导出DFMEA</button><button type="button" class="btn btn-ghost" id="dfExportXlsxEn">导出英文DFMEA</button><button type="button" class="btn btn-danger" id="dfClear">清空</button><input id="dfJsonFile" type="file" accept="application/json,.json" hidden></div></div>
         <div class="df-table-wrap"><table class="df-table"><thead><tr>${FIELDS.map(f=>`<th class="${GROUP[f]}"><small>${f}列</small>${esc(LABELS[f])}</th>`).join('')}<th class="risk"><small>Q列 · 自动</small>AP</th><th class="operation">操作</th></tr></thead><tbody id="dfWorkBody"></tbody></table></div>
         <p class="df-ap-note">AP依据S/O/D做保守工程预判（H/M/L），用于快速筛查；正式签署前请按项目指定版本的AIAG/VDA或公司AP表复核。</p>
       </section>`;
@@ -79,7 +79,8 @@
     h.querySelector('#dfExportJson').addEventListener('click',()=>download(new Blob([JSON.stringify({type:'electrical-dfmea',version:LIB.version,rows:state.rows},null,2)],{type:'application/json'}),`DFMEA_${dateTag()}.json`));
     h.querySelector('#dfImportJson').addEventListener('click',()=>h.querySelector('#dfJsonFile').click());
     h.querySelector('#dfJsonFile').addEventListener('change',importJson);
-    h.querySelector('#dfExportXlsx').addEventListener('click',exportXlsx);
+    h.querySelector('#dfExportXlsx').addEventListener('click',()=>exportXlsx('zh'));
+    h.querySelector('#dfExportXlsxEn').addEventListener('click',()=>exportXlsx('en'));
     h.addEventListener('change',event=>{
       const check=event.target.closest('[data-lib-select]'); if(check){state.selected=check.checked?[...new Set([...state.selected,check.dataset.libSelect])]:state.selected.filter(x=>x!==check.dataset.libSelect);return;}
       const cell=event.target.closest('[data-row][data-field]'); if(cell){state.rows[+cell.dataset.row][cell.dataset.field]=cell.value;renderWork();}
@@ -153,17 +154,74 @@
     let alignment=xf.getElementsByTagNameNS(ns,'alignment')[0];if(!alignment){alignment=doc.createElementNS(ns,'alignment');xf.appendChild(alignment);}alignment.setAttribute('horizontal','left');alignment.setAttribute('vertical','top');alignment.setAttribute('wrapText','1');xf.setAttribute('applyAlignment','1');
     cellXfs.appendChild(xf);cellXfs.setAttribute('count',String(styles.length+1));zip.file(path,new XMLSerializer().serializeToString(doc));return styles.length;
   }
-  async function exportXlsx(){
+  const dfmeaNames={
+    '电气系统':'Electrical System','EDM（电源分配单元）':'EDM (Electrical Distribution Module)','保险丝盒':'Fuse Box','低压线束':'Low-Voltage Wiring Harness','汇流排':'Busbar','高压线束':'High-Voltage Wiring Harness','FPC':'FPC','电芯巴片':'Cell Tab',
+    '主继电器':'Main Contactor','预充继电器':'Pre-charge Contactor','预充电阻':'Pre-charge Resistor','霍尔传感器':'Hall Current Sensor','EDM铜排':'EDM Busbar','转接PCB':'Interface PCB','Shunt（电流传感器）':'Shunt Current Sensor','Pyro-fuse':'Pyro-fuse','辅助回路保险丝':'Auxiliary-Circuit Fuse','保险丝盒铜排':'Fuse-Box Busbar','低压连接器':'Low-Voltage Connector','线缆':'Low-Voltage Cable','低压接线端子':'Low-Voltage Crimp Terminal','低压OT端子':'Low-Voltage Ring Terminal','水温传感器':'Coolant Temperature Sensor','高压连接器':'High-Voltage Connector','高压线缆':'High-Voltage Cable','互锁低压线缆':'HVIL Low-Voltage Cable',
+    '全部电气零部件':'All Electrical Components','全部电气件':'All Electrical Components','壳体防护':'Housing Protection','主继电器线圈':'Main Contactor Coil','保险丝':'Fuse','预充回路':'Pre-charge Circuit','前端高压连接器':'Front HV Connector','后端高压连接器':'Rear HV Connector','辅助高压连接器':'Auxiliary HV Connector','OBC高压连接器':'OBC HV Connector','锁止机构':'Locking Mechanism','外观标识':'Visual Identification','防错键位':'Mating Poka-Yoke','密封系统':'Sealing System','端子防护':'Terminal Protection','互锁端子':'Interlock Terminal',
+  };
+  const cjk=/[\u3400-\u9fff]/;
+  function dfName(value){
+    const raw=String(value||'').trim();if(dfmeaNames[raw])return dfmeaNames[raw];
+    let result=raw;
+    Object.entries(dfmeaNames).sort((a,b)=>b[0].length-a[0].length).forEach(([zh,en])=>{result=result.split(zh).join(en);});
+    return result.replace(/与/g,' and ').replace(/、/g,' / ').replace(/[\u3400-\u9fff]+/g,'Electrical Component');
+  }
+  function issueEnglish(text){
+    const value=String(text||'');
+    const rules=[
+      [/绝缘电阻.*低于|绝缘性能不足/,'insulation resistance below requirement'],[/漏电流.*超过/,'leakage current above the specified limit'],[/耐压/,'dielectric withstand failure'],[/电气间隙|间距不足/,'insufficient electrical clearance'],[/爬电|CAF|离子迁移/,'surface tracking or electrochemical migration'],[/对地短路|对车身短路/,'short circuit to ground'],[/线间短路|极间短路|通道间短路|相邻.*短路/,'short circuit between circuits'],[/内部短路|形成低阻旁路/,'internal short circuit'],[/短路/,'short circuit'],[/接触电阻.*增大|高电阻|高阻/,'contact resistance above limit'],[/温升.*超|过热|局部温升/,'temperature rise above limit'],[/开路|断路|中断|丢失|不能闭合|无法接通/,'open circuit or loss of continuity'],[/粘连|无法分断|不能断开/,'failure to open or welded contacts'],[/退针/,'terminal back-out'],[/松动|预紧力|防松/,'loose mechanical or electrical joint'],[/弹跳|抖动/,'contact bounce or intermittent switching'],[/间歇/,'intermittent connection'],[/延迟|超时|响应过慢/,'response or actuation time above limit'],[/误爆|误动作|非预期触发/,'unintended activation'],[/拒爆|点火能力/,'failure to activate on demand'],[/燃弧|重击穿|喷弧/,'sustained arcing or dielectric re-strike'],[/漂移|偏差|误差|失真|不准确|测量错误/,'measurement error or parameter drift beyond limit'],[/饱和/,'sensor magnetic saturation'],[/错装|错接|接反|错误插合|型号错/,'incorrect assembly, polarity or mating'],[/密封|进水|泄漏|毛细/,'sealing failure or fluid ingress'],[/腐蚀|氧化/,'corrosion or oxidation'],[/磨损|老化|寿命不足/,'premature wear or ageing'],[/疲劳|开裂|破裂|断股/,'fatigue cracking or mechanical fracture'],[/变形|移位|位置偏差|安装偏移/,'dimensional or positional deviation'],[/EMC|干扰|串扰|抗扰/,'EMC interference or signal coupling'],[/屏蔽/,'shielding discontinuity'],[/锁止|CPA|TPA/,'locking or secondary-retention failure'],[/防错|键位/,'mating poka-yoke failure'],[/触电|可触及|防触指/,'access to hazardous live parts'],[/颜色|色差/,'high-voltage identification colour out of specification'],[/阻值.*过大/,'resistance above specified limit'],[/阻值.*过小/,'resistance below specified limit'],[/阻值.*漂移/,'resistance drift beyond limit'],[/熔断|应断未断/,'incorrect fuse interruption behaviour'],[/截面积|线径不足/,'conductor cross-section below requirement'],[/压降|纹波/,'voltage drop or ripple above limit'],[/故障电流未切断/,'fault current is not interrupted'],[/状态误判|误报警/,'incorrect diagnostic state'],
+    ];
+    const found=rules.find(([pattern])=>pattern.test(value));
+    return found?found[1]:'loss or degradation of the allocated electrical function';
+  }
+  function functionEnglish(text,row,field){
+    const value=String(text||''),subject=field==='F'?'The electrical system':dfName(field==='G'?row.D:(row.E||row.D));
+    const rules=[
+      [/绝缘电阻|保持.*绝缘|绝缘距离/,`maintain the specified insulation resistance and electrical isolation`],[/耐压|漏电流/,`withstand the specified dielectric test voltage within the leakage-current limit`],[/接通|闭合|导通/,`provide reliable low-resistance electrical continuity on command`],[/分断|切断|隔离|熔断|灭弧/,`safely interrupt and isolate the circuit under the specified conditions`],[/承载|传输.*电流|传输.*功率|分配.*电流/,`carry and distribute the specified current or power without excessive loss or temperature rise`],[/测量|采样|输出.*信号|感温|响应.*温度/,`measure and transmit the required signal with the specified accuracy and response time`],[/诊断|反馈|状态/,`provide a correct and diagnosable operating-state signal`],[/HVIL|互锁/,`maintain correct and diagnosable HVIL continuity and sequencing`],[/接触电阻|低阻/,`maintain the specified low-resistance connection`],[/密封|水尘|液体/,`prevent fluid and contaminant ingress throughout the service life`],[/锁止|保持力|夹持/,`maintain mechanical retention and locking throughout the service life`],[/防错|键位|错误.*插合/,`prevent incorrect assembly or mating`],[/防触指|不可触及|遮蔽/,`prevent access to hazardous live parts`],[/屏蔽|转移阻抗/,`maintain shielding continuity and the specified transfer impedance`],[/弯曲|磨损|振动|冲击|固定/,`maintain mechanical and electrical integrity under routing, vibration and impact loads`],[/寿命|循环|插拔|动作次数/,`meet the specified operating and durability life`],[/温升|散热|热阻|环境温度/,`limit temperature rise within the specified thermal boundary`],[/阻值|电阻/,`maintain the specified resistance and pulse-energy capability`],[/电气间隙/,`maintain the required electrical clearance`],[/爬电距离/,`maintain the required creepage distance`],[/供电|电压范围/,`operate correctly throughout the specified supply-voltage range`],[/短路|相互绝缘/,`prevent unintended short circuits between conductors or to ground`],[/颜色|RAL/,`provide the specified high-voltage colour identification`],[/压接/,`maintain the specified crimp electrical resistance and mechanical strength`],
+    ];
+    const found=rules.find(([pattern])=>pattern.test(value));
+    const action=found?found[1]:'perform the allocated electrical and mechanical function within specification';
+    const standards=(value.match(/(?:IEC\s*60664|ISO\s*19642-7|IP6K9|IPxx[BD]|RAL\s*2001|2700V|500V|500MΩ|0\.1mA|120000|9[–-]16V)/gi)||[]).join(', ');
+    return `${subject} shall ${action}${standards?` (${standards})`:''}.`;
+  }
+  function controlEnglish(text,row,detection){
+    const value=String(text||''),subject=dfName(row.E||row.D);
+    const categories=[];
+    if(/额定|降额|电流|线径|截面|I²t|短路/.test(value))categories.push('rating, load profile and derating');
+    if(/公差|尺寸|间距|行程|位置|压缩率/.test(value))categories.push('dimensional tolerance and interface');
+    if(/材料|镀层|腐蚀|表面|清洁|污染/.test(value))categories.push('material, plating and contamination');
+    if(/压接|焊|螺栓|扭矩|紧固|保持力|锁止/.test(value))categories.push('joining, crimp, torque and retention');
+    if(/热|温升|散热|能量|功率/.test(value))categories.push('thermal and energy');
+    if(/诊断|阈值|信号|采样|EMC|抗扰|屏蔽/.test(value))categories.push('signal integrity, EMC and diagnostics');
+    if(/密封|IP|水|湿热/.test(value))categories.push('sealing and environmental protection');
+    if(/振动|冲击|寿命|循环|耐久|弯折|耐磨/.test(value))categories.push('mechanical and durability');
+    const scope=[...new Set(categories)].join(', ')||'design margin, interfaces, materials and manufacturing process';
+    return detection?`${subject}: verify ${scope} by inspection, measurement, environmental testing and fault injection as applicable.`:`${subject}: control ${scope} through requirement allocation, design review and process controls.`;
+  }
+  function englishCell(value,row,field){
+    if(value==null||value==='')return '';
+    if(['J','N','P'].includes(field))return value;
+    const raw=String(value);if(!cjk.test(raw))return raw;
+    if(['C','D','E'].includes(field))return dfName(raw);
+    if(['F','G','H'].includes(field))return functionEnglish(raw,row,field);
+    if(['I','K','L'].includes(field))return `${field==='I'?'System/end-user effect':field==='K'?'Failure mode':'Failure cause'}: ${issueEnglish(raw)}.`;
+    if(field==='M')return controlEnglish(raw,row,false);
+    if(field==='O')return controlEnglish(raw,row,true);
+    return raw.replace(/[\u3400-\u9fff]+/g,'').trim();
+  }
+  function englishRow(data){const translated={...data};FIELDS.forEach((field)=>{translated[field]=englishCell(data[field],data,field);});return translated;}
+
+  async function exportXlsx(language='zh'){
     if(!state.rows.length){alert('请先添加至少一行DFMEA内容。');return;} if(!window.JSZip||!window.DFMEA_TEMPLATE_BASE64){alert('Excel模板组件未加载，请确认工具目录完整。');return;}
-    const button=hostRef.querySelector('#dfExportXlsx');button.disabled=true;button.textContent='正在生成…';
+    const english=language==='en',button=hostRef.querySelector(english?'#dfExportXlsxEn':'#dfExportXlsx'),label=english?'导出英文DFMEA':'按原模板导出DFMEA';button.disabled=true;button.textContent='正在生成…';
     try{
       const zip=await JSZip.loadAsync(b64Bytes(window.DFMEA_TEMPLATE_BASE64));const styleId=await addWrappedDataStyle(zip);const xml=await zip.file('xl/worksheets/sheet1.xml').async('string');const doc=new DOMParser().parseFromString(xml,'application/xml');
       if(doc.querySelector('parsererror'))throw new Error('模板工作表解析失败');const ns='http://schemas.openxmlformats.org/spreadsheetml/2006/main';const sheetData=doc.getElementsByTagNameNS(ns,'sheetData')[0];const template=[...sheetData.getElementsByTagNameNS(ns,'row')].find(r=>r.getAttribute('r')==='15');if(!template)throw new Error('模板缺少第15行样式');
       [...sheetData.getElementsByTagNameNS(ns,'row')].filter(r=>+r.getAttribute('r')>=15).forEach(r=>sheetData.removeChild(r));
-      state.rows.forEach((data,index)=>{const no=15+index,rowEl=template.cloneNode(true),maxLength=Math.max(...FIELDS.map(f=>String(data[f]||'').length));rowEl.setAttribute('r',String(no));rowEl.setAttribute('ht',String(Math.min(405,Math.max(60,Math.ceil(maxLength/16)*15))));rowEl.setAttribute('customHeight','1');[...rowEl.getElementsByTagNameNS(ns,'c')].forEach(c=>{c.setAttribute('r',`${colName(c.getAttribute('r'))}${no}`);c.setAttribute('s',String(styleId));});FIELDS.forEach(f=>setCell(doc,rowEl,f,no,data[f],['J','N','P'].includes(f),styleId));setCell(doc,rowEl,'Q',no,ap(data.J,data.N,data.P),false,styleId);sheetData.appendChild(rowEl);});
+      state.rows.map((data)=>english?englishRow(data):data).forEach((data,index)=>{const no=15+index,rowEl=template.cloneNode(true),maxLength=Math.max(...FIELDS.map(f=>String(data[f]||'').length));rowEl.setAttribute('r',String(no));rowEl.setAttribute('ht',String(Math.min(405,Math.max(60,Math.ceil(maxLength/16)*15))));rowEl.setAttribute('customHeight','1');[...rowEl.getElementsByTagNameNS(ns,'c')].forEach(c=>{c.setAttribute('r',`${colName(c.getAttribute('r'))}${no}`);c.setAttribute('s',String(styleId));});FIELDS.forEach(f=>setCell(doc,rowEl,f,no,data[f],['J','N','P'].includes(f),styleId));setCell(doc,rowEl,'Q',no,ap(data.J,data.N,data.P),false,styleId);sheetData.appendChild(rowEl);});
       doc.getElementsByTagNameNS(ns,'dimension')[0].setAttribute('ref',`A1:AE${14+state.rows.length}`);zip.file('xl/worksheets/sheet1.xml',new XMLSerializer().serializeToString(doc));
-      download(await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',compression:'DEFLATE'}),`DFMEA_${dateTag()}.xlsx`);
-    }catch(error){console.error(error);alert('DFMEA导出失败：'+error.message);}finally{button.disabled=false;button.textContent='按原模板导出DFMEA';}
+      download(await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',compression:'DEFLATE'}),`DFMEA_${english?'EN_':''}${dateTag()}.xlsx`);
+    }catch(error){console.error(error);alert('DFMEA导出失败：'+error.message);}finally{button.disabled=false;button.textContent=label;}
   }
   function styles(){return `
     .df-intro{display:flex;justify-content:space-between;gap:24px;align-items:center;background:linear-gradient(135deg,#fff 55%,#edf7f1)}.df-intro h3{font-size:25px;margin:4px 0}.df-intro p{margin:0;max-width:880px;color:var(--text-muted)}.df-kicker{font-size:11px;letter-spacing:.13em;font-weight:800;color:#367a2c}.df-counts{display:grid;grid-template-columns:auto auto;gap:2px 9px;white-space:nowrap}.df-counts b{font:700 23px var(--mono);color:#173b5e;text-align:right}.df-counts span{font-size:12px;align-self:center;color:#64748b}
