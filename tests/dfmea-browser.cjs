@@ -40,6 +40,29 @@ const { chromium } = require('playwright');
       assert.ok(dOrder < 0 || (dOrder === 0 && eOrder <= 0), 'rows with the same D must be grouped by E');
     }
   });
+  await page.getByRole('button', { name: '按部件→子零件排序' }).click();
+  const treeRows = await page.locator('#dfWorkBody tr').evaluateAll((rows) => rows.map((row) => ({
+    c: row.querySelector('[data-field="C"]').value,
+    d: row.querySelector('[data-field="D"]').value,
+  })));
+  const treeSpec = await page.evaluate(() => {
+    const l2 = window.DFMEA_LIBRARY.rows.filter((row) => row.level === 2);
+    const l3 = window.DFMEA_LIBRARY.rows.filter((row) => row.level === 3);
+    return [...new Set(l2.map((row) => row.D))].sort((a, b) => a.localeCompare(b, 'zh-CN', { numeric: true, sensitivity: 'base' })).map((name) => ({
+      name,
+      componentCount: l2.filter((row) => row.D === name).length,
+      childCount: l3.filter((row) => row.C === name).length,
+    }));
+  });
+  assert.ok(treeRows.slice(0, 46).every((row) => row.c === ''), 'tree sort keeps system rows first');
+  let cursor = 46;
+  treeSpec.forEach((group) => {
+    assert.ok(treeRows.slice(cursor, cursor + group.componentCount).every((row) => row.c === '电气系统' && row.d === group.name), `${group.name} component rows must be contiguous`);
+    cursor += group.componentCount;
+    assert.ok(treeRows.slice(cursor, cursor + group.childCount).every((row) => row.c === group.name), `${group.name} child rows must follow immediately`);
+    cursor += group.childCount;
+  });
+  assert.equal(cursor, treeRows.length, 'tree sort must include every row exactly once');
   const hierarchy = await page.evaluate(() => {
     const rows = window.DFMEA_LIBRARY.rows;
     const system = rows.filter((row) => row.level === 1);

@@ -43,7 +43,7 @@
         <div class="df-filters"><label>搜索<input id="dfQuery" value="${esc(state.query)}" placeholder="功能、部件、失效模式、措施…"></label><label>层级<select id="dfLevel"><option>全部</option><option value="1"${state.level==='1'?' selected':''}>第一层级</option><option value="2"${state.level==='2'?' selected':''}>第二层级</option><option value="3"${state.level==='3'?' selected':''}>第三层级</option></select></label><label>对象<select id="dfFamily"><option>全部</option>${families().map(x=>`<option${state.family===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label><button type="button" class="btn btn-ghost" id="dfSelectVisible">全选当前结果</button></div>
         <div class="df-result-meta"><span id="dfResultCount"></span><span>第一层含附件二${LIB.originalSystemCount}条原始需求及补充父功能；系统级 C/F/I 保持空白。</span></div><div class="df-library-list" id="dfLibraryList"></div>
       </section>
-      <section class="panel df-work"><div class="df-section-head"><div><h3>当前DFMEA</h3><p>可横向滚动。支持从Excel复制多格后，在任意单元格直接粘贴；制表符与换行会依次填入右侧和下方单元格。</p></div><div class="df-toolbar"><button type="button" class="btn btn-ghost" data-add-level="1">加入全部系统需求</button><button type="button" class="btn btn-ghost" data-add-level="2">加入全部部件</button><button type="button" class="btn btn-ghost" data-add-level="3">加入全部子零件</button><button type="button" class="btn btn-ghost" id="dfSort">一键按层级/名称排序</button><button type="button" class="btn btn-ghost" id="dfAddBlank">添加空白行</button></div></div>
+      <section class="panel df-work"><div class="df-section-head"><div><h3>当前DFMEA</h3><p>可横向滚动。支持从Excel复制多格后，在任意单元格直接粘贴；制表符与换行会依次填入右侧和下方单元格。</p></div><div class="df-toolbar"><button type="button" class="btn btn-ghost" data-add-level="1">加入全部系统需求</button><button type="button" class="btn btn-ghost" data-add-level="2">加入全部部件</button><button type="button" class="btn btn-ghost" data-add-level="3">加入全部子零件</button><button type="button" class="btn btn-ghost" id="dfSort">一键按层级/名称排序</button><button type="button" class="btn btn-ghost" id="dfTreeSort">按部件→子零件排序</button><button type="button" class="btn btn-ghost" id="dfAddBlank">添加空白行</button></div></div>
         <div class="df-actionbar"><span id="dfWorkCount"></span><div><button type="button" class="btn btn-ghost" id="dfImportJson">导入JSON</button><button type="button" class="btn btn-ghost" id="dfExportJson">导出JSON</button><button type="button" class="btn btn-primary" id="dfExportXlsx">按原模板导出DFMEA</button><button type="button" class="btn btn-danger" id="dfClear">清空</button><input id="dfJsonFile" type="file" accept="application/json,.json" hidden></div></div>
         <div class="df-table-wrap"><table class="df-table"><thead><tr>${FIELDS.map(f=>`<th class="${GROUP[f]}"><small>${f}列</small>${esc(LABELS[f])}</th>`).join('')}<th class="risk"><small>Q列 · 自动</small>AP</th><th class="operation">操作</th></tr></thead><tbody id="dfWorkBody"></tbody></table></div>
         <p class="df-ap-note">AP依据S/O/D做保守工程预判（H/M/L），用于快速筛查；正式签署前请按项目指定版本的AIAG/VDA或公司AP表复核。</p>
@@ -74,6 +74,7 @@
     h.querySelector('#dfAddSelected').addEventListener('click',()=>{addRows(LIB.rows.filter(r=>state.selected.includes(r.id)));state.selected=[];renderLibrary();});
     h.querySelector('#dfAddBlank').addEventListener('click',()=>{state.rows.push(cloneRow({level:'',id:'',J:5,N:3,P:5}));renderWork();});
     h.querySelector('#dfSort').addEventListener('click',sortWorkRows);
+    h.querySelector('#dfTreeSort').addEventListener('click',sortComponentTree);
     h.querySelectorAll('[data-add-level]').forEach(b=>b.addEventListener('click',()=>addRows(LIB.rows.filter(r=>String(r.level)===b.dataset.addLevel))));
     h.querySelector('#dfClear').addEventListener('click',()=>{if(confirm('确定清空当前DFMEA的全部行吗？建议先导出JSON备份。')){state.rows=[];renderWork();}});
     h.querySelector('#dfExportJson').addEventListener('click',()=>download(new Blob([JSON.stringify({type:'electrical-dfmea',version:LIB.version,rows:state.rows},null,2)],{type:'application/json'}),`DFMEA_${dateTag()}.json`));
@@ -102,6 +103,28 @@
       for(const field of fields){const compared=collator.compare(text(a.item,field),text(b.item,field));if(compared)return compared;}
       return a.index-b.index;
     }).map((entry)=>entry.item);
+    renderWork();
+  }
+  function sortComponentTree(){
+    const collator=new Intl.Collator('zh-CN',{numeric:true,sensitivity:'base'});
+    const stableSort=(rows,fields)=>rows.map((item,index)=>({item,index})).sort((a,b)=>{
+      for(const field of fields){const compared=collator.compare(String(a.item[field]||''),String(b.item[field]||''));if(compared)return compared;}
+      return a.index-b.index;
+    }).map((entry)=>entry.item);
+    const systemRows=stableSort(state.rows.filter((row)=>Number(row.level)===1),['D','E','G','K']);
+    const componentRows=state.rows.filter((row)=>Number(row.level)===2);
+    const childRows=state.rows.filter((row)=>Number(row.level)===3);
+    const otherRows=state.rows.filter((row)=>![1,2,3].includes(Number(row.level)));
+    const componentNames=[...new Set(componentRows.map((row)=>String(row.D||'')))].sort(collator.compare);
+    const ordered=[...systemRows];
+    componentNames.forEach((name)=>{
+      ordered.push(...stableSort(componentRows.filter((row)=>String(row.D||'')===name),['E','G','K']));
+      ordered.push(...stableSort(childRows.filter((row)=>String(row.C||'')===name),['D','E','G','K']));
+    });
+    const known=new Set(componentNames);
+    ordered.push(...stableSort(childRows.filter((row)=>!known.has(String(row.C||''))),['C','D','E','G','K']));
+    ordered.push(...otherRows);
+    state.rows=ordered;
     renderWork();
   }
   function pasteGrid(event) {
