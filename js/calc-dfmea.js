@@ -1,4 +1,4 @@
-/** 基于原版 Excel 模板的三级动力电池电气 DFMEA 生成器。 */
+/** 基于原版 Excel 模板的两级动力电池电气 DFMEA 生成器。 */
 (function () {
   'use strict';
   const T = window.ElectricalToolkit;
@@ -31,19 +31,19 @@
       && (state.family==='全部'||(r.tags||[]).includes(state.family))
       && (!q||[r.id,...FIELDS.map((f)=>r[f]),...(r.tags||[])].join(' ').toLowerCase().includes(q)));
   }
-  function levelName(level) { return level===1?'第一层级 · 电气系统':level===2?'第二层级 · 部件':'第三层级 · 子零件'; }
+  function levelName(level) { return level===1?'第一层级 · 电气系统':'第二层级 · 部件/子零件特性'; }
   function options(value) { return Array.from({length:10},(_,i)=>`<option value="${i+1}"${+value===i+1?' selected':''}>${i+1}</option>`).join(''); }
   function download(blob, name) { const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1200); }
 
   function render(host) {
     hostRef=host;
     host.innerHTML=`<style>${styles()}</style>
-      <section class="panel df-intro"><div><span class="df-kicker">AIAG/VDA WORKSHEET · OFFLINE</span><h3>动力电池电气系统三级 DFMEA</h3><p>网页仅编辑模板第15行起的 <b>C–P列</b>；保留附件二37条系统需求，并补充缺失的系统父功能。第二层严格继承系统父行，第三层严格继承部件父行。导出保留原Excel标题、色带、列宽和A4打印设置。</p></div><div class="df-counts"><b>${LIB.rows.filter(r=>r.level===1).length}</b><span>系统需求</span><b>${LIB.rows.filter(r=>r.level===2).length}</b><span>部件分析</span><b>${LIB.rows.filter(r=>r.level===3).length}</b><span>子零件分析</span></div></section>
+      <section class="panel df-intro"><div><span class="df-kicker">AIAG/VDA WORKSHEET · OFFLINE</span><h3>动力电池电气系统两级 DFMEA</h3><p>网页仅编辑模板第15行起的 <b>C–P列</b>；保留附件二37条系统需求，并补充缺失的系统父功能。原第三层级内容已逐条整合为第二层级条目，并在 E/H/L 列体现子零件、子零件功能和失效原因。导出保留原Excel标题、色带、列宽和A4打印设置。</p></div><div class="df-counts"><b>${LIB.rows.filter(r=>r.level===1).length}</b><span>系统需求</span><b>${LIB.rows.filter(r=>r.level===2).length}</b><span>部件分析</span></div></section>
       <section class="panel df-library"><div class="df-section-head"><div><h3>DFMEA底库</h3><p>筛选、勾选需要的条目，再加入当前DFMEA；加入后可逐格修改，不会反向改变底库。</p></div><button type="button" class="btn btn-primary" id="dfAddSelected">加入已选条目</button></div>
-        <div class="df-filters"><label>搜索<input id="dfQuery" value="${esc(state.query)}" placeholder="功能、部件、失效模式、措施…"></label><label>层级<select id="dfLevel"><option>全部</option><option value="1"${state.level==='1'?' selected':''}>第一层级</option><option value="2"${state.level==='2'?' selected':''}>第二层级</option><option value="3"${state.level==='3'?' selected':''}>第三层级</option></select></label><label>对象<select id="dfFamily"><option>全部</option>${families().map(x=>`<option${state.family===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label><button type="button" class="btn btn-ghost" id="dfSelectVisible">全选当前结果</button></div>
+        <div class="df-filters"><label>搜索<input id="dfQuery" value="${esc(state.query)}" placeholder="功能、部件、子零件、失效模式、措施…"></label><label>层级<select id="dfLevel"><option>全部</option><option value="1"${state.level==='1'?' selected':''}>第一层级</option><option value="2"${state.level==='2'?' selected':''}>第二层级</option></select></label><label>对象<select id="dfFamily"><option>全部</option>${families().map(x=>`<option${state.family===x?' selected':''}>${esc(x)}</option>`).join('')}</select></label><button type="button" class="btn btn-ghost" id="dfSelectVisible">全选当前结果</button></div>
         <div class="df-result-meta"><span id="dfResultCount"></span><span>第一层含附件二${LIB.originalSystemCount}条原始需求及补充父功能；系统级 C/F/I 保持空白。</span></div><div class="df-library-list" id="dfLibraryList"></div>
       </section>
-      <section class="panel df-work"><div class="df-section-head"><div><h3>当前DFMEA</h3><p>可横向滚动。支持从Excel复制多格后，在任意单元格直接粘贴；制表符与换行会依次填入右侧和下方单元格。</p></div><div class="df-toolbar"><button type="button" class="btn btn-ghost" data-add-level="1">加入全部系统需求</button><button type="button" class="btn btn-ghost" data-add-level="2">加入全部部件</button><button type="button" class="btn btn-ghost" data-add-level="3">加入全部子零件</button><button type="button" class="btn btn-ghost" id="dfSort">一键按层级/名称排序</button><button type="button" class="btn btn-ghost" id="dfTreeSort">按部件→子零件排序</button><button type="button" class="btn btn-ghost" id="dfAddBlank">添加空白行</button></div></div>
+      <section class="panel df-work"><div class="df-section-head"><div><h3>当前DFMEA</h3><p>可横向滚动。支持从Excel复制多格后，在任意单元格直接粘贴；制表符与换行会依次填入右侧和下方单元格。</p></div><div class="df-toolbar"><button type="button" class="btn btn-ghost" data-add-level="1">加入全部系统需求</button><button type="button" class="btn btn-ghost" data-add-level="2">加入全部部件分析</button><button type="button" class="btn btn-ghost" id="dfSort">一键按层级/名称排序</button><button type="button" class="btn btn-ghost" id="dfAddBlank">添加空白行</button></div></div>
         <div class="df-actionbar"><span id="dfWorkCount"></span><div><button type="button" class="btn btn-ghost" id="dfImportJson">导入JSON</button><button type="button" class="btn btn-ghost" id="dfExportJson">导出JSON</button><button type="button" class="btn btn-primary" id="dfExportXlsx">按原模板导出DFMEA</button><button type="button" class="btn btn-danger" id="dfClear">清空</button><input id="dfJsonFile" type="file" accept="application/json,.json" hidden></div></div>
         <div class="df-table-wrap"><table class="df-table"><thead><tr>${FIELDS.map(f=>`<th class="${GROUP[f]}"><small>${f}列</small>${esc(LABELS[f])}</th>`).join('')}<th class="risk"><small>Q列 · 自动</small>AP</th><th class="operation">操作</th></tr></thead><tbody id="dfWorkBody"></tbody></table></div>
         <p class="df-ap-note">AP依据S/O/D做保守工程预判（H/M/L），用于快速筛查；正式签署前请按项目指定版本的AIAG/VDA或公司AP表复核。</p>
@@ -74,7 +74,6 @@
     h.querySelector('#dfAddSelected').addEventListener('click',()=>{addRows(LIB.rows.filter(r=>state.selected.includes(r.id)));state.selected=[];renderLibrary();});
     h.querySelector('#dfAddBlank').addEventListener('click',()=>{state.rows.push(cloneRow({level:'',id:'',J:5,N:3,P:5}));renderWork();});
     h.querySelector('#dfSort').addEventListener('click',sortWorkRows);
-    h.querySelector('#dfTreeSort').addEventListener('click',sortComponentTree);
     h.querySelectorAll('[data-add-level]').forEach(b=>b.addEventListener('click',()=>addRows(LIB.rows.filter(r=>String(r.level)===b.dataset.addLevel))));
     h.querySelector('#dfClear').addEventListener('click',()=>{if(confirm('确定清空当前DFMEA的全部行吗？建议先导出JSON备份。')){state.rows=[];renderWork();}});
     h.querySelector('#dfExportJson').addEventListener('click',()=>download(new Blob([JSON.stringify({type:'electrical-dfmea',version:LIB.version,rows:state.rows},null,2)],{type:'application/json'}),`DFMEA_${dateTag()}.json`));
@@ -105,28 +104,6 @@
     }).map((entry)=>entry.item);
     renderWork();
   }
-  function sortComponentTree(){
-    const collator=new Intl.Collator('zh-CN',{numeric:true,sensitivity:'base'});
-    const stableSort=(rows,fields)=>rows.map((item,index)=>({item,index})).sort((a,b)=>{
-      for(const field of fields){const compared=collator.compare(String(a.item[field]||''),String(b.item[field]||''));if(compared)return compared;}
-      return a.index-b.index;
-    }).map((entry)=>entry.item);
-    const systemRows=stableSort(state.rows.filter((row)=>Number(row.level)===1),['D','E','G','K']);
-    const componentRows=state.rows.filter((row)=>Number(row.level)===2);
-    const childRows=state.rows.filter((row)=>Number(row.level)===3);
-    const otherRows=state.rows.filter((row)=>![1,2,3].includes(Number(row.level)));
-    const componentNames=[...new Set(componentRows.map((row)=>String(row.D||'')))].sort(collator.compare);
-    const ordered=[...systemRows];
-    componentNames.forEach((name)=>{
-      ordered.push(...stableSort(componentRows.filter((row)=>String(row.D||'')===name),['E','G','K']));
-      ordered.push(...stableSort(childRows.filter((row)=>String(row.C||'')===name),['D','E','G','K']));
-    });
-    const known=new Set(componentNames);
-    ordered.push(...stableSort(childRows.filter((row)=>!known.has(String(row.C||''))),['C','D','E','G','K']));
-    ordered.push(...otherRows);
-    state.rows=ordered;
-    renderWork();
-  }
   function pasteGrid(event) {
     const target=event.target.closest('[data-row][data-field]'); if(!target)return;
     const text=event.clipboardData&&event.clipboardData.getData('text/plain'); if(!text||(!text.includes('\t')&&!/[\r\n]/.test(text)))return;
@@ -137,7 +114,28 @@
   }
   async function importJson(event) {
     const file=event.target.files[0];event.target.value='';if(!file)return;
-    try{const data=JSON.parse(await file.text());if(!Array.isArray(data.rows))throw new Error('文件中没有rows数组');state.rows=data.rows.map(cloneRow);renderWork();}catch(error){alert('JSON导入失败：'+error.message);}
+    try{const data=JSON.parse(await file.text());if(!Array.isArray(data.rows))throw new Error('文件中没有rows数组');state.rows=migrateRows(data.rows,data.version);renderWork();}catch(error){alert('JSON导入失败：'+error.message);}
+  }
+
+  function migrateRows(rows,version){
+    if(Number(version)===Number(LIB.version))return rows.map((item)=>({...item,id:item.id||`USR-${Date.now()}-${Math.random().toString(16).slice(2)}`}));
+    const byId=new Map(LIB.rows.map((item)=>[item.id,item]));
+    const migrated=rows.map((item)=>{
+      if(Number(item.level)===2&&item.E){
+        const exact=LIB.rows.find((base)=>base.level===2&&base.D===item.D&&base.E===item.E&&base.G===item.G&&base.H===item.H&&base.K===item.K&&base.L===item.L);
+        if(exact)return cloneRow(exact);
+      }
+      if(item.sourceId&&byId.has(item.sourceId))return cloneRow(byId.get(item.sourceId));
+      if(Number(item.level)===3){
+        const integrated=LIB.rows.find((base)=>base.level===2&&base.D===item.C&&base.E===item.D&&base.G===item.F&&base.H===item.G&&base.K===item.I&&base.L===item.K);
+        if(integrated)return cloneRow(integrated);
+        const parent=LIB.rows.find((base)=>base.level===2&&base.D===item.C&&base.G===item.F&&base.K===item.I);
+        return {...item,id:item.id||`USR-${Date.now()}-${Math.random().toString(16).slice(2)}`,level:2,C:parent?parent.C:'电气系统',D:item.C,E:item.D,F:parent?parent.F:'',G:item.F,H:item.G,I:parent?parent.I:'',J:parent?parent.J:item.J,K:item.I,L:item.K};
+      }
+      return {...item,id:item.id||`USR-${Date.now()}-${Math.random().toString(16).slice(2)}`};
+    }).filter(Boolean);
+    const seen=new Set();
+    return migrated.filter((item)=>{const key=item.sourceId?`source:${item.sourceId}`:`custom:${item.id}`;if(seen.has(key))return false;seen.add(key);return true;});
   }
   function dateTag(){return new Date().toISOString().slice(0,10).replace(/-/g,'');}
   function b64Bytes(value){const raw=atob(value),out=new Uint8Array(raw.length);for(let i=0;i<raw.length;i++)out[i]=raw.charCodeAt(i);return out;}
@@ -173,11 +171,10 @@
     .df-table-wrap{overflow:auto;border:1px solid #94a3b8;max-height:68vh}.df-table{border-collapse:separate;border-spacing:0;min-width:3400px;background:#fff}.df-table th,.df-table td{border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;vertical-align:top}.df-table th{position:sticky;top:0;z-index:2;padding:8px 6px;font-size:11px;text-align:left;min-width:165px}.df-table th small{display:block;font-family:var(--mono);opacity:.68}.df-table th.structure{background:#dbeafe}.df-table th.function{background:#dcfce7}.df-table th.failure{background:#fee2e2}.df-table th.risk{background:#d9f99d}.df-table th:nth-child(1){min-width:115px;width:115px}.df-table th:nth-child(2){min-width:120px;width:120px}.df-table th:nth-child(3){min-width:125px;width:125px}.df-table th:nth-child(4){min-width:150px;width:150px}.df-table th:nth-child(5){min-width:520px;width:520px}.df-table th:nth-child(6){min-width:235px}.df-table th:nth-child(7){min-width:270px}.df-table th:nth-child(9){min-width:250px}.df-table th:nth-child(10){min-width:330px}.df-table th:nth-child(11),.df-table th:nth-child(13){min-width:270px}.df-table th:nth-child(8),.df-table th:nth-child(12),.df-table th:nth-child(14),.df-table th:nth-child(15){min-width:76px;width:76px}.df-table textarea{display:block;width:100%;min-height:76px;border:0;border-radius:0;resize:vertical;padding:8px;font-size:12px;background:#fff}.df-table textarea:focus{outline:2px solid #2563eb;outline-offset:-2px}.df-table td.score{padding:6px;width:76px}.df-table td.score select{min-width:62px}.df-table td.ap{padding:14px;text-align:center}.df-table td.ap span{display:inline-grid;place-items:center;width:34px;height:34px;border-radius:50%;font-weight:900}.ap-h{background:#fee2e2;color:#b91c1c}.ap-m{background:#fef3c7;color:#92400e}.ap-l{background:#dcfce7;color:#166534}.df-table .operation{min-width:116px;width:116px;position:sticky;right:0;background:#fff}.df-table th.operation{z-index:3;background:#e2e8f0}.df-table td.operation{padding:6px;display:flex;gap:4px}.df-ap-note{font-size:11px;color:#64748b;margin:8px 0 0}
     @media(max-width:850px){.df-intro{align-items:flex-start;flex-direction:column}.df-filters{grid-template-columns:1fr 1fr}.df-filters label:first-child{grid-column:1/-1}.df-lib-row{grid-template-columns:24px 120px 1fr 60px}.df-lib-row>span:nth-of-type(3){display:none}}`}
 
-  T.register({id:'dfmea',title:'DFMEA生成器',icon:'🧩',group:'工程文档与评审',desc:'基于原版Excel模板建立动力电池电气系统、部件和子零件三级DFMEA，并从底库快速填充。',
+  T.register({id:'dfmea',title:'DFMEA生成器',icon:'🧩',group:'工程文档与评审',desc:'基于原版Excel模板建立动力电池电气系统与部件两级DFMEA，子零件分析整合在部件行中。',
     captureDraft(){return {version:LIB.version,query:state.query,level:state.level,family:state.family,rows:state.rows};},
     restoreDraft(saved){
-      const outdated=saved.version!==LIB.version,byId=new Map(LIB.rows.map((item)=>[item.id,item]));
-      const rows=(saved.rows||[]).map((item)=>outdated&&item.sourceId&&byId.has(item.sourceId)?cloneRow(byId.get(item.sourceId)):item);
-      state={...state,...saved,version:LIB.version,rows,selected:[]};render(hostRef);
+      const rows=migrateRows(saved.rows||[],saved.version);
+      state={...state,...saved,version:LIB.version,level:saved.level==='3'?'2':saved.level,rows,selected:[]};render(hostRef);
     },resetDraft(){state={query:'',level:'全部',family:'全部',selected:[],rows:[]};render(hostRef);},render(host){render(host);}});
 })();

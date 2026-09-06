@@ -1,4 +1,4 @@
-/** 动力电池电气系统三级 DFMEA 底库。 */
+/** 动力电池电气系统两级 DFMEA 底库（原三级分析整合至二级 E/H/L）。 */
 (function (global) {
   'use strict';
 
@@ -226,9 +226,35 @@
       parent.L=critical?critical.K:'';
     });
   }
-  // 下级字段只能来自紧邻的下一层，禁止在系统层直接出现三级子零件。
-  synchronizeLowerLevel(l2,l3);
-  synchronizeLowerLevel(system,l2);
+  // 原三级条目逐条展开成二级条目：D为部件，E/H/L承载原三级名称、功能和失效。
+  const integratedL2=[];
+  l2.forEach((parent)=>{
+    const children=l3.filter((child)=>child.C===parent.D&&child.F===parent.G&&child.I===parent.K);
+    if(!children.length){integratedL2.push({...parent,E:'',H:'',L:''});return;}
+    children.forEach((child,index)=>integratedL2.push({
+      ...parent,
+      id:index===0?parent.id:`${parent.id}-LOWER-${index+1}`,
+      E:child.D,
+      H:child.G,
+      L:child.K,
+      M:String(child.M||parent.M).replace(/^子零件控制：/,''),
+      N:child.N||parent.N,
+      O:String(child.O||parent.O).replace(/^子零件验证：/,''),
+      P:child.P||parent.P,
+      tags:[...new Set([...(parent.tags||[]),...(child.tags||[])])],
+    }));
+  });
+  // 合并后去除原底库中完全重复的二级分析，避免同一子零件失效被重复展示。
+  const integratedFields=['C','D','E','F','G','H','I','J','K','L','M','N','O','P'];
+  const integratedKeys=new Set();
+  const consolidatedL2=integratedL2.filter((row)=>{
+    const key=integratedFields.map((field)=>String(row[field]??'')).join('\u001f');
+    if(integratedKeys.has(key))return false;
+    integratedKeys.add(key);
+    return true;
+  });
+  // 系统层只从实际二级条目中选择一个关键下级，不再直接输出独立三级行。
+  synchronizeLowerLevel(system,consolidatedL2);
 
-  global.DFMEA_LIBRARY = { version:6, originalSystemCount:37, source:'new_template.xlsx + 电气系统级别需求(1).xlsx', fields:['C','D','E','F','G','H','I','J','K','L','M','N','O','P'], rows:[...system,...l2,...l3] };
+  global.DFMEA_LIBRARY = { version:7, originalSystemCount:37, source:'new_template.xlsx + 电气系统级别需求(1).xlsx', fields:['C','D','E','F','G','H','I','J','K','L','M','N','O','P'], rows:[...system,...consolidatedL2] };
 })(window);
