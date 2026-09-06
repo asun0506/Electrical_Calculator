@@ -29,10 +29,37 @@ assert.ok(level3.every((row) => row.C && row.D && row.F && row.G && row.I && row
 assert.ok(level2.every((child) => system.some((parent) => parent.D === child.C && parent.G === child.F && parent.K === child.I)), 'every component C/F/I exactly matches one system parent D/G/K');
 assert.ok(level3.every((child) => level2.some((parent) => parent.D === child.C && parent.G === child.F && parent.K === child.I)), 'every child-part C/F/I exactly matches one component parent D/G/K');
 assert.ok(level2.every((row) => !row.E.includes('/')), 'each component row names only one downstream child');
+function critical(rows) {
+  return rows.slice().sort((a, b) => {
+    const risk = (item) => (Number(item.J) || 0) * (Number(item.N) || 0) * (Number(item.P) || 0);
+    return risk(b) - risk(a) || Number(b.J) - Number(a.J) || Number(b.N) - Number(a.N) || Number(b.P) - Number(a.P) || String(a.D).localeCompare(String(b.D), 'zh-CN');
+  })[0];
+}
+system.forEach((parent) => {
+  const children = level2.filter((child) => child.C === parent.D && child.F === parent.G && child.I === parent.K);
+  const selected = critical(children);
+  assert.equal(parent.E, selected ? selected.D : '', `${parent.id} E must contain one critical second-level name`);
+  assert.equal(parent.H, selected ? selected.G : '', `${parent.id} H must match the same second-level row`);
+  assert.equal(parent.L, selected ? selected.K : '', `${parent.id} L must match the same second-level row`);
+});
+level2.forEach((parent) => {
+  const children = level3.filter((child) => child.C === parent.D && child.F === parent.G && child.I === parent.K);
+  const selected = critical(children);
+  assert.equal(parent.E, selected ? selected.D : '', `${parent.id} E must contain one critical third-level name`);
+  assert.equal(parent.H, selected ? selected.G : '', `${parent.id} H must match the same third-level row`);
+  assert.equal(parent.L, selected ? selected.K : '', `${parent.id} L must match the same third-level row`);
+});
 assert.ok(system.some((row) => row.G === '绝缘：500V电压下，整包绝缘电阻≥200MΩ'));
 assert.ok(system.some((row) => row.G === '耐压：2700V电压下，整包漏电流≤1mA'));
 assert.ok(system.some((row) => row.G === '电气间隙满足IEC 60664'));
 assert.ok(system.some((row) => row.G === '爬电距离满足IEC 60664'));
+[[12,'高压线束','高压连接器'],[13,'高压线束','高压连接器'],[11,'低压线束',null],[32,'低压线束','线缆'],[14,'低压线束','低压OT端子']].forEach(([no,componentName,childName]) => {
+  const parent = system.find((row) => row.id === `SYS-${String(no).padStart(2,'0')}`);
+  assert.equal(parent.E, componentName, `${parent.id} must link to ${componentName}`);
+  const componentRow = level2.find((row) => row.C === parent.D && row.F === parent.G && row.I === parent.K && row.D === componentName && (!childName || row.E === childName));
+  assert.ok(componentRow, `${parent.id} needs a matching component row`);
+  if (childName) assert.ok(level3.some((row) => row.C === componentRow.D && row.F === componentRow.G && row.I === componentRow.K && row.D === childName), `${componentRow.id} needs a matching child row`);
+});
 ['EDM（电源分配单元）','保险丝盒','低压线束','汇流排','高压线束','FPC','电芯巴片'].forEach((name) => {
   assert.ok(level2.some((row) => row.D === name && row.G.includes('绝缘：500V')));
   assert.ok(level2.some((row) => row.D === name && row.G.includes('耐压：2700V')));

@@ -179,6 +179,13 @@
     component(41,'L2-TAB-04','电芯巴片','','在振动和热循环后保持电芯连接连续','','电芯巴片焊点开路','','焊接能量、表面状态、焊点数量和应变释放设计',4,'焊点拉力、截面、振动和动态导通测试',4,['电芯巴片']),
     component(6,'L2-TAB-02','电芯巴片','','承受保护器件动作前的故障电流','','电芯巴片在保护前熔断','','短时耐受、最小截面和热影响区校核',3,'短时过流、熔断边界和温升测试',3,['电芯巴片']),
     component(10,'L2-TAB-03','电芯巴片','','保持电芯间连接与周边结构绝缘','','电芯巴片对壳或异电位短路','','绝缘覆盖、位置公差和焊渣控制设计',3,'耐压、绝缘电阻和异物检查',3,['电芯巴片']),
+
+    component(12,'L2-HV-FINGER-01','高压线束','高压连接器','保证整包在连接器插合状态满足IPxxD防触指要求','在插合状态遮蔽高压端子并限制试指接近','连接器插合状态防触指不满足IPxxD','高压连接器插合后仍可触及带电部件','端子缩进、护套开口、插合深度和壳体遮蔽设计',2,'连接器插合状态IPxxD探针验证',3,['高压连接器','防触指']),
+    component(13,'L2-HV-FINGER-02','高压线束','高压连接器','保证整包在连接器未插合状态满足IPxxB防触指要求','在未插合状态通过护套遮蔽高压端子','连接器未插合状态防触指不满足IPxxB','高压连接器未插合时可触及带电端子','端子前端防护、护套深度、TPA和退针限位设计',2,'连接器未插合状态IPxxB探针验证',3,['高压连接器','防触指']),
+    component(11,'L2-LV-HVIL-01','低压线束','低压连接器','提供整包HVIL回路的对外接口','通过HVIL IN/OUT针脚连接整车与包内互锁回路','HVIL回路接口中断','低压连接器HVIL端子开路','针脚定义、端子保持力、CPA/TPA和开路诊断设计',3,'HVIL针脚导通、保持力和故障注入测试',3,['低压连接器','HVIL']),
+    component(11,'L2-LV-HVIL-02','低压线束','线缆','连接LV接口、BMU、高压DC Link和辅助DC Link的HVIL路径','连续传输HVIL IN/OUT信号','HVIL回路路径中断','低压线缆HVIL导体开路','HVIL拓扑、线缆路由、弯折和端接应变释放设计',3,'HVIL端到端导通、开短路注入和振动测试',3,['线缆','HVIL']),
+    component(32,'L2-LV-TEMP-01','低压线束','线缆','满足ISO 19642-7 Class B线束温升要求','以适用线径承载低压RMS电流并限制温升','低压线束温升超过Class B限值','低压线缆截面积不足','RMS电流、线径、成束系数和环境温度降额计算',3,'Class B负载谱下线缆温升与热稳态测试',3,['线缆','温升']),
+    component(14,'L2-LV-BOND-01','低压线束','低压OT端子','建立非高压导电部件到车身地的等电位连接','通过独立OT端子形成低阻搭铁路径','等电位连接不连续或阻值过大','低压OT端子搭接失效','接地拓扑、截面积、镀层、防转和紧固扭矩设计',3,'四线法搭铁电阻、扭矩保持和环境后复测',3,['低压OT端子','等电位连接']),
   ];
 
   const electricalFocuses = [
@@ -207,5 +214,21 @@
   });
   const l3=[...inheritedL3,...electricalL3];
 
-  global.DFMEA_LIBRARY = { version:3, originalSystemCount:37, source:'new_template.xlsx + 电气系统级别需求(1).xlsx', fields:['C','D','E','F','G','H','I','J','K','L','M','N','O','P'], rows:[...system,...l2,...l3] };
+  function synchronizeLowerLevel(parentRows, childRows){
+    parentRows.forEach((parent)=>{
+      const linked=childRows.filter((child)=>child.C===parent.D&&child.F===parent.G&&child.I===parent.K);
+      const critical=linked.slice().sort((a,b)=>{
+        const risk=(item)=>(Number(item.J)||0)*(Number(item.N)||0)*(Number(item.P)||0);
+        return risk(b)-risk(a)||(Number(b.J)||0)-(Number(a.J)||0)||(Number(b.N)||0)-(Number(a.N)||0)||(Number(b.P)||0)-(Number(a.P)||0)||String(a.D).localeCompare(String(b.D),'zh-CN');
+      })[0];
+      parent.E=critical?critical.D:'';
+      parent.H=critical?critical.G:'';
+      parent.L=critical?critical.K:'';
+    });
+  }
+  // 下级字段只能来自紧邻的下一层，禁止在系统层直接出现三级子零件。
+  synchronizeLowerLevel(l2,l3);
+  synchronizeLowerLevel(system,l2);
+
+  global.DFMEA_LIBRARY = { version:6, originalSystemCount:37, source:'new_template.xlsx + 电气系统级别需求(1).xlsx', fields:['C','D','E','F','G','H','I','J','K','L','M','N','O','P'], rows:[...system,...l2,...l3] };
 })(window);
