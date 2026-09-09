@@ -41,6 +41,7 @@
     'engineering-formulas': '<path d="M4 3h10M4 13h10M6 5l3 3-3 3m5-5h3m-3 4h3"/>',
     'standards-library': '<path d="M3 3h5a2 2 0 0 1 2 2v9H5a2 2 0 0 0-2 1V3Zm7 2a2 2 0 0 1 2-2h3v12h-3a2 2 0 0 0-2 1"/>',
     dfmea: '<path d="M2 3h14v10H2zM5 3v10m4-10v10m4-10v10M2 7h14"/>',
+    dvpr: '<path d="M5 2h8M7 2v4l-4 7h12l-4-7V2M5 10h8"/>',
   };
 
   function moduleIcon(id) {
