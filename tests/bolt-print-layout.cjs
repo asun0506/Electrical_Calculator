@@ -1,0 +1,21 @@
+const fs=require('node:fs');
+const path=require('node:path');
+const {pathToFileURL}=require('node:url');
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const root=path.resolve(__dirname,'..');
+(async()=>{
+  const browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',headless:true,args:['--allow-file-access-from-files']});
+  const page=await browser.newPage({viewport:{width:1500,height:1000}});
+  await page.goto(pathToFileURL(path.join(root,'index.html')).href);
+  await page.evaluate(()=>localStorage.clear());await page.reload();await page.evaluate(()=>ElectricalToolkit.open('bolt'));
+  await page.locator('[data-meta="projectName"]').fill('打印布局验证项目');
+  await page.locator('[data-part-name]').fill('EDM总成');
+  await page.locator('[data-joint-field="name"]').fill('主铜排连接界面');
+  await page.locator('[data-image-kind="part"][data-image-owner]').setInputFiles(path.join(root,'img','snapfit-structures.png'));
+  await page.locator('[data-image-kind="joint"][data-image-owner]').setInputFiles(path.join(root,'img','iec60664-f2.png'));
+  await page.evaluate(()=>{window.print=()=>{};});
+  await page.locator('#btExportPdf').click();await page.waitForTimeout(250);await page.emulateMedia({media:'print'});
+  const out=path.join(root,'output','pdf');fs.mkdirSync(out,{recursive:true});
+  await page.pdf({path:path.join(out,'bolt-report-layout-sample.pdf'),format:'A4',printBackground:true,preferCSSPageSize:true});
+  await browser.close();console.log('Created output/pdf/bolt-report-layout-sample.pdf');
+})().catch(e=>{console.error(e);process.exitCode=1;});

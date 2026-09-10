@@ -1,0 +1,22 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs');
+const path=require('node:path');
+const {pathToFileURL}=require('node:url');
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+const root=path.resolve(__dirname,'..');let browser;
+(async()=>{
+  browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',headless:true,args:['--allow-file-access-from-files']});
+  const page=await browser.newPage({viewport:{width:1600,height:1000},acceptDownloads:true});const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto(pathToFileURL(path.join(root,'index.html')).href);await page.evaluate(()=>localStorage.clear());await page.reload();await page.evaluate(()=>ElectricalToolkit.open('bolt'));
+  await page.locator('[data-meta="projectName"]').fill('换电电池包项目');await page.locator('[data-meta="reportName"]').fill('紧固连接校核');await page.locator('[data-meta="preparedBy"]').fill('工程师A');
+  await page.locator('[data-part-name]').fill('EDM总成');await page.locator('[data-joint-field="name"]').fill('主铜排连接界面');
+  assert.match(await page.locator('.bt-result').innerText(),/校核/);assert.match(await page.locator('#btOverall').innerText(),/通过|不通过/);
+  await page.locator('[data-add-joint]').click();assert.equal(await page.locator('.bt-joint').count(),2);await page.locator('.bt-joint').nth(1).locator('[data-joint-field="name"]').fill('继电器安装界面');
+  await page.locator('#btAddPart').click();assert.equal(await page.locator('.bt-part').count(),2);await page.locator('[data-part-name]').nth(1).fill('保险丝盒');
+  const png=Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=','base64');
+  await page.locator('[data-image-kind="part"][data-image-owner]').first().setInputFiles({name:'EDM.png',mimeType:'image/png',buffer:png});await page.locator('.bt-image img').first().waitFor();
+  const downloadPromise=page.waitForEvent('download');await page.locator('#btExportJson').click();const dl=await downloadPromise;const target=path.join(root,'bolt-suite-test.json');await dl.saveAs(target);const data=JSON.parse(fs.readFileSync(target,'utf8'));assert.equal(data.parts.length,2);assert.equal(data.parts[0].joints.length,2);assert.ok(data.parts[0].image.dataUrl.startsWith('data:image/png;base64,'));fs.unlinkSync(target);
+  await page.evaluate(()=>{window.print=()=>{window.__printed=(window.__printed||0)+1;};});await page.locator('#btExportPdf').click();await page.waitForTimeout(250);assert.match(await page.locator('#btPrint').innerText(),/换电电池包项目/);assert.match(await page.locator('#btPrint').innerText(),/EDM总成/);assert.equal(await page.locator('#btPrint img').count(),1);assert.doesNotMatch(await page.locator('#btPrint').innerText(),/EDM\.png/);
+  await page.evaluate(()=>window.dispatchEvent(new Event('afterprint')));await page.locator('#btExportPdfEn').click();await page.waitForTimeout(250);assert.ok(await page.evaluate(()=>window.__printed>=2));assert.deepEqual(errors,[]);
+  await browser.close();console.log('PASS bolt suite: report metadata, 2 parts, 3 joints, image, JSON and bilingual PDF');
+})().catch(async e=>{console.error(e);if(browser)await browser.close();process.exitCode=1;});
