@@ -42,6 +42,7 @@
     'standards-library': '<path d="M3 3h5a2 2 0 0 1 2 2v9H5a2 2 0 0 0-2 1V3Zm7 2a2 2 0 0 1 2-2h3v12h-3a2 2 0 0 0-2 1"/>',
     dfmea: '<path d="M2 3h14v10H2zM5 3v10m4-10v10m4-10v10M2 7h14"/>',
     dvpr: '<path d="M5 2h8M7 2v4l-4 7h12l-4-7V2M5 10h8"/>',
+    schematic: '<rect x="2" y="2" width="5" height="4"/><rect x="11" y="10" width="5" height="4"/><path d="M7 4h3v8h1M3 10h4m-2-2v4"/>',
   };
 
   function moduleIcon(id) {
