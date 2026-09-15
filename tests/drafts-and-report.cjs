@@ -83,21 +83,29 @@ async function roundTrip(id) {
   await roundTrip('materials');
   assert.equal(await page.locator('.mt-p').first().isEnabled(), true, 'unfinished material edits remain editable');
 
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
   await open('iec60664');
   await page.locator('[data-action=add-dim]').first().click();
   await page.locator('[data-dim-field=name]').first().fill('绝缘尺寸草稿');
+  await page.locator('[data-dim-field=note]').first().fill('人工复核：测量点避开圆角。');
+  await page.locator('[data-dim-field=conclusionOverride]').first().selectOption('fail');
+  assert.equal((await page.evaluate(()=>ElectricalToolkit.get('iec60664').captureDraft().levels.flatMap(level=>level.dimensions).find(dim=>dim.name==='绝缘尺寸草稿'))).note,'人工复核：测量点避开圆角。');
+  await page.locator('.iec-image-file').first().setInputFiles({ name: 'iec-dimension.png', mimeType: 'image/png', buffer: png });await page.locator('[data-action=preview-image]').first().waitFor();
+  await page.locator('[data-action=preview-image]').first().click();assert.equal(await page.locator('#engineering-image-preview').evaluate(el=>el.style.display),'flex');await page.locator('#engineering-image-preview button').click();
   await roundTrip('iec60664');
+  const reviewedDimension=await page.evaluate(()=>ElectricalToolkit.get('iec60664').captureDraft().levels.flatMap(level=>level.dimensions).find(dim=>dim.name==='绝缘尺寸草稿'));assert.equal(reviewedDimension.note,'人工复核：测量点避开圆角。');assert.equal(reviewedDimension.conclusionOverride,'fail');await page.evaluate(()=>{window.print=()=>{};});await page.locator('[data-action=export-pdf]').click();assert.match(await page.locator('.iec-print-root').innerText(),/人工复核：测量点避开圆角。/);assert.match(await page.locator('.iec-print-root').innerText(),/人工编辑结论/);await page.evaluate(()=>window.dispatchEvent(new Event('afterprint')));
 
   await open('conductor');
-  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jRZkAAAAASUVORK5CYII=', 'base64');
   await page.locator('[data-row-image]').first().setInputFiles({ name: 'draft-image.png', mimeType: 'image/png', buffer: png });
   await page.waitForFunction(() => ElectricalToolkit.get('conductor').captureDraft().conductors[0].image?.dataUrl);
+  await page.locator('[data-preview-image]').first().click();assert.equal(await page.locator('#engineering-image-preview').evaluate(el=>el.style.display),'flex');assert.ok(await page.locator('.cd-change-image').first().count());await page.locator('#engineering-image-preview button').click();
   await roundTrip('conductor');
   const image = await page.evaluate(() => ElectricalToolkit.get('conductor').captureDraft().conductors[0].image.dataUrl);
 
   await open('sor-generator');
   await page.locator('.sor-add-row').first().click();
   await page.locator('textarea[data-table-id]').first().fill('SOR 表格草稿');
+  const sorImageInput=page.locator('[data-cell-image]').first();assert.ok(await sorImageInput.count());await sorImageInput.setInputFiles({ name: 'sor-cell.png', mimeType: 'image/png', buffer: png });const sorPreview=page.locator('[data-preview-cell-image]').first();await sorPreview.evaluate(el=>el.click());assert.equal(await page.locator('#engineering-image-preview').evaluate(el=>el.style.display),'flex');assert.match(await sorPreview.locator('xpath=following-sibling::label[1]').textContent(),/更换附图/);await page.locator('#engineering-image-preview button').click();
   await page.locator('#sorAttachmentInput').setInputFiles({ name: 'large-draft-test.txt', mimeType: 'text/plain', buffer: Buffer.alloc(6 * 1024 * 1024, 65) });
   await page.waitForFunction(() => ElectricalToolkit.get('sor-generator').captureDraft().attachments.length === 1);
   await roundTrip('sor-generator');

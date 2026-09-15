@@ -260,12 +260,32 @@
     return String(parseFloat(n.toFixed(digits)));
   }
 
+  function previewImage(src, alt = '附图预览') {
+    if (!src) return;
+    let overlay = document.getElementById('engineering-image-preview');
+    if (!overlay) {
+      overlay = document.createElement('div');
+      overlay.id = 'engineering-image-preview';
+      overlay.style.cssText = 'position:fixed;inset:0;z-index:9999;display:none;align-items:center;justify-content:center;padding:4vh 4vw;background:rgba(12,24,34,.82);box-sizing:border-box';
+      overlay.innerHTML = '<button type="button" aria-label="关闭预览" style="position:absolute;right:22px;top:16px;width:42px;height:42px;border:1px solid rgba(255,255,255,.7);border-radius:50%;background:rgba(0,0,0,.35);color:#fff;font-size:27px;cursor:pointer">×</button><img alt="" style="display:block;max-width:92vw;max-height:90vh;object-fit:contain;background:#fff;box-shadow:0 16px 55px rgba(0,0,0,.45)">';
+      const close = () => { overlay.style.display = 'none'; };
+      overlay.addEventListener('click', (event) => { if (event.target === overlay || event.target.tagName === 'BUTTON') close(); });
+      document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && overlay.style.display !== 'none') close(); });
+      document.body.appendChild(overlay);
+    }
+    const image = overlay.querySelector('img');
+    image.src = src;
+    image.alt = alt;
+    overlay.style.display = 'flex';
+  }
+
   /** 小工具集合，供各计算器复用 */
   const util = {
     parseNum,
     fmt,
     fmtExact,
     escapeHtml,
+    previewImage,
   };
 
   global.ElectricalToolkit = toolkit;

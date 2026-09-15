@@ -52,6 +52,7 @@
       id: uid('dim'), name: '', kind: 'clearance', image: '', nominal: '',
       toleranceMode: 'direct', lowerDeviation: '', upperDeviation: '',
       verificationMethod: 'rss3',
+      note: '', conclusionOverride: 'auto',
       contributors: [newContributor()], expanded: true,
     };
   }
@@ -81,6 +82,8 @@
         result.id = result.id || uid('dim');
         result.image = typeof result.image === 'string' && result.image.startsWith('data:image/') ? result.image : '';
         result.verificationMethod = VERIFY_METHODS[result.verificationMethod] ? result.verificationMethod : 'rss3';
+        result.note = String(result.note || '');
+        result.conclusionOverride = ['auto', 'pass', 'fail'].includes(result.conclusionOverride) ? result.conclusionOverride : 'auto';
         result.contributors = Array.isArray(result.contributors) && result.contributors.length
           ? result.contributors.map((part) => Object.assign(newContributor(), part || {}))
           : [newContributor()];
@@ -220,15 +223,21 @@
   function layerSummary(level) {
     const standard = Core.calculate(level);
     const results = level.dimensions.map((dim) => calculateDimension(dim, standard));
-    const completed = results.filter((item) => item.complete);
-    const failed = completed.filter((item) => item.pass === false);
+    const decisions = results.map((result, index) => dimensionDecision(level.dimensions[index], result));
+    const completed = decisions.filter((item) => item.status !== 'pending');
+    const failed = completed.filter((item) => item.status === 'fail');
     return {
-      standard, results, completed: completed.length, failed: failed.length,
+      standard, results, decisions, completed: completed.length, failed: failed.length,
       status: !standard.valid ? 'invalid'
         : failed.length ? 'fail'
         : !level.dimensions.length || completed.length !== level.dimensions.length ? 'pending'
         : 'pass',
     };
+  }
+
+  function dimensionDecision(dim, result) {
+    const manual = dim.conclusionOverride === 'pass' || dim.conclusionOverride === 'fail';
+    return { manual, status: manual ? dim.conclusionOverride : result.complete ? (result.pass ? 'pass' : 'fail') : 'pending' };
   }
 
   function statusLabel(status) {
@@ -281,12 +290,13 @@
 
   function dimensionRow(levelIndex, dimIndex, dim, result) {
     const image = dim.image
-      ? `<button class="iec-image-button" data-action="pick-image" data-level="${levelIndex}" data-dim="${dimIndex}" title="更换截图"><img src="${dim.image}" alt="尺寸截图"></button>`
+      ? `<div class="iec-image-controls"><button class="iec-image-button" data-action="preview-image" data-level="${levelIndex}" data-dim="${dimIndex}" title="单击放大截图"><img src="${dim.image}" alt="尺寸截图"></button><button class="btn btn-ghost btn-sm" data-action="pick-image" data-level="${levelIndex}" data-dim="${dimIndex}">更换附图</button></div>`
       : `<button class="iec-image-empty" data-action="pick-image" data-level="${levelIndex}" data-dim="${dimIndex}">添加截图</button>`;
     const toleranceText = dim.toleranceMode === 'chain'
       ? `±${f(result.selectedTolerance)} (${verificationLabel(dim)})<small>${toleranceReferences(result)}</small>`
       : `${f(result.lower)} / +${f(result.upper)}`;
-    const status = result.complete ? (result.pass ? 'pass' : 'fail') : 'pending';
+    const decision = dimensionDecision(dim, result);
+    const status = decision.status;
     return `
       <tr class="iec-check-row ${status}">
         <td class="iec-row-index">${dimIndex + 1}</td>
@@ -300,7 +310,7 @@
         <td class="iec-tolerance-value">${toleranceText}</td>
         <td class="iec-number"><strong>${f(result.minimum)}</strong></td>
         <td class="iec-number">${f(result.spec)}</td>
-        <td><span class="iec-status ${status}">${status === 'pass' ? '通过' : status === 'fail' ? '不通过' : '待输入'}</span></td>
+        <td><span class="iec-status ${status}">${status === 'pass' ? '通过' : status === 'fail' ? '不通过' : '待输入'}</span>${decision.manual ? '<small class="iec-manual-mark">人工判定</small>' : ''}</td>
         <td class="iec-actions">
           <button class="btn btn-ghost btn-sm" data-action="toggle-dim" data-level="${levelIndex}" data-dim="${dimIndex}">${dim.expanded ? '收起' : '编辑'}</button>
           <button class="btn btn-del btn-sm" data-action="remove-dim" data-level="${levelIndex}" data-dim="${dimIndex}">删除</button>
@@ -333,6 +343,10 @@
             <div class="iec-rss-result secondary"><span>极值参考</span><b>±${f(result.wc)} mm</b></div>`}
         </div>
         ${direct ? '' : chainEditor(levelIndex, dimIndex, dim, result)}
+        <div class="iec-dim-review">
+          <label class="field"><span>尺寸备注</span><textarea data-level="${levelIndex}" data-dim="${dimIndex}" data-dim-field="note" placeholder="填写测量位置、设计说明或判断依据">${E.escapeHtml(dim.note || '')}</textarea></label>
+          <label class="field"><span>校核结论</span><select data-level="${levelIndex}" data-dim="${dimIndex}" data-dim-field="conclusionOverride"><option value="auto"${selected(dim.conclusionOverride, 'auto')}>自动计算</option><option value="pass"${selected(dim.conclusionOverride, 'pass')}>人工判定：通过</option><option value="fail"${selected(dim.conclusionOverride, 'fail')}>人工判定：不通过</option></select><small>人工判定会覆盖自动结果，并在导出报告中明确标注。</small></label>
+        </div>
         ${dim.image ? `<div class="btn-row"><button class="btn btn-del btn-sm" data-action="remove-image" data-level="${levelIndex}" data-dim="${dimIndex}">移除截图</button></div>` : ''}
       </div>`;
   }
@@ -484,6 +498,9 @@
       const input = currentHost.querySelector(`.iec-image-file[data-level="${levelIndex}"][data-dim="${dimIndex}"]`);
       if (input) input.click();
       return;
+    } else if (action === 'preview-image' && dim && dim.image) {
+      E.previewImage(dim.image, dim.name || '尺寸截图');
+      return;
     } else if (action === 'remove-image' && dim) dim.image = '';
     else if (action === 'import-json') {
       const input = currentHost.querySelector('.iec-json-file');
@@ -526,15 +543,17 @@
 
   function reportDimensionRows(level, summary, lang = 'zh') {
     const tr = T.reportLanguage(lang);
-    if (!level.dimensions.length) return tr('<tr><td colspan="9">未建立关键尺寸</td></tr>');
+    if (!level.dimensions.length) return tr('<tr><td colspan="10">未建立关键尺寸</td></tr>');
     return level.dimensions.map((dim, index) => {
       const r = summary.results[index];
-      const status = r.complete ? (r.pass ? '通过' : '不通过') : '待输入';
+      const decision = summary.decisions[index];
+      const status = decision.status === 'pass' ? '通过' : decision.status === 'fail' ? '不通过' : '待输入';
       const tol = dim.toleranceMode === 'chain'
         ? `±${f(r.selectedTolerance)} (${tr(verificationLabel(dim))})<small>${tr(toleranceReferences(r))}</small>`
         : `${f(r.lower)} / +${f(r.upper)}`;
       const image = dim.image ? `<img class="report-image" src="${dim.image}" alt="尺寸截图">` : '—';
-      return tr`<tr><td>${index + 1}</td><td>${E.escapeHtml(dim.name || tr('未命名'))}</td><td>${image}</td><td>${tr(dim.kind === 'creepage' ? '爬电距离' : '电气间隙')}</td><td>${f(r.nominal)}</td><td>${tol}</td><td>${f(r.minimum)}</td><td>${f(r.spec)}</td><td class="report-${status === '通过' ? 'pass' : status === '不通过' ? 'fail' : 'pending'}">${tr(status)}</td></tr>`;
+      const manual = decision.manual ? `<small>${tr('人工编辑结论')}</small>` : '';
+      return tr`<tr><td>${index + 1}</td><td>${E.escapeHtml(dim.name || tr('未命名'))}</td><td>${image}</td><td>${tr(dim.kind === 'creepage' ? '爬电距离' : '电气间隙')}</td><td>${f(r.nominal)}</td><td>${tol}</td><td>${f(r.minimum)}</td><td>${f(r.spec)}</td><td>${E.escapeHtml(dim.note || '—')}</td><td class="report-${status === '通过' ? 'pass' : status === '不通过' ? 'fail' : 'pending'}">${tr(status)}${manual}</td></tr>`;
     }).join('');
   }
 
@@ -568,11 +587,11 @@
           const s = item.standard;
           return tr`<section class="report-level"><h2><span>${level.code}</span>${E.escapeHtml(level.name === LEVELS.find((item) => item.id === level.id)?.name ? tr(level.name) : level.name)}校核 — ${tr(statusLabel(item.status))}</h2>
             <table class="report-boundary"><tr><th>工作电压</th><td>${E.escapeHtml(level.voltage)} V</td><th>海拔</th><td>${E.escapeHtml(level.altitude)} m</td><th>污染等级</th><td>${E.escapeHtml(level.pollution)}</td><th>材料组别</th><td>${E.escapeHtml(level.material)}</td></tr>${s.valid ? tr`<tr><th>Uimp</th><td>${f(s.impulseKV)} kV</td><th>电气间隙标准</th><td>${f(s.clearance)} mm</td><th>爬电距离标准</th><td>${f(s.creepage)} mm</td><th>海拔系数</th><td>${f(s.altitudeFactor)}</td></tr>` : tr`<tr><td colspan="8" class="report-fail">${E.escapeHtml(tr(s.error))}</td></tr>`}</table>
-            <table class="report-checks"><thead><tr><th>#</th><th>关键尺寸</th><th>截图</th><th>类别</th><th>名义/mm</th><th>公差/mm</th><th>最小/mm</th><th>标准/mm</th><th>结论</th></tr></thead><tbody>${reportDimensionRows(level, item, lang)}</tbody></table>
+            <table class="report-checks"><thead><tr><th>#</th><th>关键尺寸</th><th>截图</th><th>类别</th><th>名义/mm</th><th>公差/mm</th><th>最小/mm</th><th>标准/mm</th><th>备注</th><th>结论</th></tr></thead><tbody>${reportDimensionRows(level, item, lang)}</tbody></table>
             ${reportChainDetails(level, item, lang)}
           </section>`;
         }).join('')}
-        <section class="report-conclusion"><h2>汇总结论</h2><p>系统总体结论：<strong>${tr(overall)}</strong>。尺寸链默认按 RSS 3σ 判定，并允许每条关键尺寸独立选择 RSS 4σ、RSS 6σ 或极值法。RSS 法假设各尺寸环节独立且近似正态分布；极值法按公差贡献绝对值累加。具体判定方法与 3σ/4σ/6σ/极值参考值见各条记录。</p><ul>${state.levels.map((level, index) => tr`<li>${E.escapeHtml(level.name === LEVELS.find((item) => item.id === level.id)?.name ? tr(level.name) : level.name)}：${tr(statusLabel(summaries[index].status))}，完成 ${summaries[index].completed}/${level.dimensions.length} 条，不通过 ${summaries[index].failed} 条。</li>`).join('')}</ul></section>
+        <section class="report-conclusion"><h2>汇总结论</h2><p>系统总体结论：<strong>${tr(overall)}</strong>。尺寸链默认按 RSS 3σ 判定，并允许每条关键尺寸独立选择 RSS 4σ、RSS 6σ 或极值法。RSS 法假设各尺寸环节独立且近似正态分布；极值法按公差贡献绝对值累加。人工编辑过的结论已在明细表内注明，并覆盖对应条目的自动计算结论。</p><ul>${state.levels.map((level, index) => tr`<li>${E.escapeHtml(level.name === LEVELS.find((item) => item.id === level.id)?.name ? tr(level.name) : level.name)}：${tr(statusLabel(summaries[index].status))}，完成 ${summaries[index].completed}/${level.dimensions.length} 条，不通过 ${summaries[index].failed} 条。</li>`).join('')}</ul></section>
         <footer>本报告由电气工程师综合计算器生成。标准表格、绝缘类型及具体产品要求应由工程师在设计冻结前复核。</footer>
       </article>`;
   }
@@ -582,7 +601,7 @@
       body{font-family:"Microsoft YaHei",Arial,sans-serif;color:#172230;background:#fff;margin:0;-webkit-print-color-adjust:exact;print-color-adjust:exact} .iec-report{width:281mm;max-width:281mm;min-height:194mm;box-sizing:border-box;margin:0 auto;padding:8mm;font-size:10.5pt;line-height:1.4}
       .iec-report header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:3px solid #173b5e;padding-bottom:14px;margin-bottom:16px}.iec-report header p{margin:0;color:#9b6500;font-size:10px;letter-spacing:.14em}.iec-report h1{font-size:23px;margin:3px 0}.iec-report h2{font-size:16px;color:#173b5e;border-bottom:1px solid #aebac6;padding-bottom:6px}.iec-report h2 span{font-size:9px;border:1px solid #71879a;padding:2px 5px;margin-right:8px}.iec-report h4{margin:14px 0 6px}
       .report-overall{padding:8px 14px;border:2px solid;font-size:16px}.report-pass{color:#08775a}.report-fail{color:#b42318}.report-pending{color:#9a6400}
-      .iec-report table{width:100%;border-collapse:collapse;margin:8px 0 14px;table-layout:fixed}.iec-report th,.iec-report td{border:1px solid #bfc9d3;padding:6px 7px;vertical-align:middle;word-break:break-word}.iec-report th{background:#edf2f6;color:#274159}.report-meta th{width:12%}.report-meta td{width:38%}.report-boundary th{width:10%}.report-checks th:nth-child(1){width:3%}.report-checks th:nth-child(2){width:16%}.report-checks th:nth-child(3){width:20%}.report-checks th:nth-child(4){width:9%}.report-checks th:nth-child(5),.report-checks th:nth-child(6),.report-checks th:nth-child(7),.report-checks th:nth-child(8){width:9%}.report-checks th:nth-child(9){width:8%}
+      .iec-report table{width:100%;border-collapse:collapse;margin:8px 0 14px;table-layout:fixed}.iec-report th,.iec-report td{border:1px solid #bfc9d3;padding:6px 7px;vertical-align:middle;word-break:break-word}.iec-report th{background:#edf2f6;color:#274159}.report-meta th{width:12%}.report-meta td{width:38%}.report-boundary th{width:10%}.report-checks th:nth-child(1){width:3%}.report-checks th:nth-child(2){width:13%}.report-checks th:nth-child(3){width:16%}.report-checks th:nth-child(4){width:8%}.report-checks th:nth-child(5),.report-checks th:nth-child(6),.report-checks th:nth-child(7),.report-checks th:nth-child(8){width:8%}.report-checks th:nth-child(9){width:14%}.report-checks th:nth-child(10){width:8%}
       .report-image{display:block;max-width:100%;max-height:150px;margin:auto}.report-checks td small{display:block;margin-top:3px;color:#596b7a;font-size:7.5px;line-height:1.25}.report-level{break-before:page;page-break-before:always}.report-chain{break-inside:avoid;page-break-inside:avoid;margin-top:10px}.iec-report table.report-chain-layout{margin:5px 0 10px;table-layout:fixed;border-collapse:collapse}.report-chain-layout>tbody>tr>td{border:0;padding:0 6px;vertical-align:top}.report-chain-layout>tbody>tr>td:first-child{padding-left:0}.report-chain-layout>tbody>tr>td:last-child{padding-right:0}.iec-report table.report-chain-table{margin:0;font-size:9px;table-layout:fixed}.report-chain-table th,.report-chain-table td{padding:4px 3px}.report-chain-table th:nth-child(1){width:22%}.report-chain-table th:nth-child(2),.report-chain-table th:nth-child(3),.report-chain-table th:nth-child(5),.report-chain-table th:nth-child(6),.report-chain-table th:nth-child(7){width:11%}.report-chain-table th:nth-child(4){width:23%}.report-chain-chart-cell{border:1px solid #cbd5df!important;background:#fbfcfd}.report-chain-chart-cell .chart-title{text-align:center;font-size:11px;font-weight:700;margin:2px 0}.report-chain-chart-cell svg{display:block;max-height:205px}.report-chain-chart-cell .note{margin-top:2px;padding:4px 6px;font-size:8px;color:#43596c}.report-chart-empty{display:flex;align-items:center;justify-content:center;min-height:190px;color:#687887;font-size:10px}.chart-title{text-align:center;font-weight:700;margin-top:8px}.note{padding:6px;color:#43596c}.report-conclusion{border:2px solid #173b5e;padding:10px 14px;break-inside:avoid}.iec-report footer{margin-top:16px;border-top:1px solid #cfd7e1;padding-top:8px;color:#5e6b78;font-size:10px}
       @page{size:297mm 210mm;margin:8mm}`;
   }
@@ -701,7 +720,10 @@
         }
         if (target.matches('[data-level-field],[data-dim-field],[data-chain-field]')) {
           updateFromControl(target);
-          renderAll();
+          const passiveText = target.dataset.levelField === 'name'
+            || ['name', 'note'].includes(target.dataset.dimField)
+            || target.dataset.chainField === 'name';
+          if (!passiveText) renderAll();
         }
       });
       host.addEventListener('click', (event) => {

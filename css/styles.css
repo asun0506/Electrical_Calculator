@@ -977,8 +977,9 @@ body { background: var(--bg); line-height: 1.55; }
 .iec-tolerance-value { text-align: center; font-family: var(--mono); }
 .iec-tolerance-value small { display: block; margin-top: 2px; color: var(--text-muted); font-size: 9px; }
 .iec-image-cell { text-align: center; }
+.iec-image-controls { display: grid; justify-items: center; gap: 5px; }
 .iec-image-button, .iec-image-empty { width: 132px; height: 78px; border: 1px dashed #9aaaba; background: #f5f7f9; cursor: pointer; }
-.iec-image-button { padding: 2px; }
+.iec-image-button { padding: 2px; cursor: zoom-in; }
 .iec-image-button img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .iec-image-empty { color: #607385; font-size: 11px; }
 .iec-image-file { display: none; }
@@ -988,6 +989,9 @@ body { background: var(--bg); line-height: 1.55; }
 .iec-detail-row > td { padding: 0 !important; background: #f3f6f8; }
 .iec-dim-editor { padding: 15px; border-left: 3px solid #7690a7; }
 .iec-editor-top { display: grid; grid-template-columns: repeat(4, minmax(145px, 1fr)); gap: 12px; align-items: end; }
+.iec-dim-review { display: grid; grid-template-columns: minmax(260px, 2fr) minmax(220px, 1fr); gap: 12px; margin-top: 14px; }
+.iec-dim-review textarea { width: 100%; min-height: 70px; resize: vertical; }
+.iec-dim-review small, .iec-manual-mark { display: block; margin-top: 4px; color: #9a5b12; font-size: 10px; }
 .iec-rss-result { min-height: 56px; padding: 8px 11px; border: 1px solid #bdc9d4; background: #fff; }
 .iec-rss-result span, .iec-rss-result b { display: block; }
 .iec-rss-result span { color: var(--text-muted); font-size: 10px; }
@@ -1035,7 +1039,7 @@ body { background: var(--bg); line-height: 1.55; }
 @media (max-width: 720px) {
   .iec-head-row, .iec-level-title, .iec-level-footer, .iec-chain-head { align-items: stretch; flex-direction: column; }
   .iec-report-actions { justify-content: flex-start; }
-  .iec-editor-top, .iec-summary-grid { grid-template-columns: 1fr; }
+  .iec-editor-top, .iec-dim-review, .iec-summary-grid { grid-template-columns: 1fr; }
   .iec-chain-row { grid-template-columns: 1fr 1fr; }
 }
 
