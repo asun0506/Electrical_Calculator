@@ -1,0 +1,67 @@
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+
+const root = path.resolve(__dirname, '..');
+let browser;
+
+(async () => {
+  browser = await chromium.launch({
+    executablePath: process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    headless: true,
+    args: ['--allow-file-access-from-files']
+  });
+  const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+  await page.goto(pathToFileURL(path.join(root, 'index.html')).href);
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await page.evaluate(() => ElectricalToolkit.open('schematic'));
+  await page.waitForSelector('#schDiagram');
+
+  const overflowingEditors = await page.locator('#schEntities .sch-component-editor').evaluateAll(cards =>
+    cards.filter(card => card.scrollWidth > card.clientWidth + 1).map(card => ({
+      id: card.dataset.componentEditor,
+      clientWidth: card.clientWidth,
+      scrollWidth: card.scrollWidth
+    }))
+  );
+  assert.deepEqual(overflowingEditors, [], 'component/device editors must not overflow at 1366px');
+
+  const headerWidths = await page.locator('.sch-wires thead th').evaluateAll(headers =>
+    headers.map(header => Math.round(header.getBoundingClientRect().width))
+  );
+  assert.ok(headerWidths[1] <= 300, `source column should be compact, got ${headerWidths[1]}px`);
+  assert.ok(headerWidths[2] <= 440, `target column should be compact, got ${headerWidths[2]}px`);
+  assert.ok(headerWidths[3] >= 145, `wire type column should be wider, got ${headerWidths[3]}px`);
+  assert.ok(headerWidths[4] >= 155, `wire gauge column should be wider, got ${headerWidths[4]}px`);
+
+  await page.evaluate(() => ElectricalToolkit.get('schematic').restoreDraft({
+    meta: { title: 'layout-overflow' },
+    components: [
+      { id: 'source', name: 'Source', type: 'component', x: 100, y: 100, w: 180, h: 120, connectors: [{ id: 'source-j1', name: 'J1', side: 'right', pins: [{ id: 'source-p1', no: '1', definition: 'SIG' }] }], devices: [] },
+      { id: 'target', name: 'Target', type: 'component', x: 700, y: 100, w: 180, h: 120, connectors: [{ id: 'target-j1', name: 'J1', side: 'left', pins: [{ id: 'target-p1', no: '1', definition: 'SIG' }] }], devices: [] }
+    ],
+    connections: [{ id: 'wire', from: 'pin:source-p1', type: 'lv', gauge: '0.35 mm²', net: 'SIG', function: 'Signal', targets: [{ id: 'wire-target', to: 'pin:target-p1', waypoints: [] }] }],
+    revisions: []
+  }));
+  await page.locator('[data-wire-id="wire"] [data-add-junction-target="wire-target"]').click();
+  const branchLayout = await page.locator('.sch-connection-subrow-branch').evaluate(row => {
+    const properties = row.querySelector('.sch-branch-properties');
+    return {
+      rowClientWidth: row.clientWidth,
+      rowScrollWidth: row.scrollWidth,
+      propertiesRight: properties.getBoundingClientRect().right,
+      rowRight: row.getBoundingClientRect().right
+    };
+  });
+  assert.ok(branchLayout.rowScrollWidth <= branchLayout.rowClientWidth + 1, `branch row overflowed by ${branchLayout.rowScrollWidth - branchLayout.rowClientWidth}px`);
+  assert.ok(branchLayout.propertiesRight <= branchLayout.rowRight + 1, 'branch properties must remain inside the grouped wire row');
+
+  console.log('schematic responsive layout tests passed');
+})().catch(error => {
+  console.error(error);
+  process.exitCode = 1;
+}).finally(async () => {
+  if (browser) await browser.close();
+});
