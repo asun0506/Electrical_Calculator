@@ -9,4 +9,4 @@ Desktop.ini
 
 # Local-only files
 _input_*.txt
-
+.worktrees/
