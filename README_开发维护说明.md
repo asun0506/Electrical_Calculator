@@ -109,6 +109,16 @@
 
 本工具是无后端、无构建步骤的静态 HTML 项目，可直接编辑后刷新浏览器验证。
 
+## 开发测试环境
+
+终端用户仍可直接打开 `index.html` 使用本工具，无需安装开发依赖。贡献者请在项目目录运行：
+
+```powershell
+corepack pnpm install
+corepack pnpm exec playwright install chromium
+corepack pnpm test
+```
+
 ## 入口与模块机制
 
 - 网站入口：`index.html`

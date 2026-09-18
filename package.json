@@ -1,0 +1,16 @@
+{
+  "name": "electrical-calculator",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Offline-first electrical engineering calculator",
+  "scripts": {
+    "test:syntax": "node scripts/run-tests.cjs syntax",
+    "test:unit": "node scripts/run-tests.cjs unit",
+    "test:browser": "node scripts/run-tests.cjs browser",
+    "test": "node scripts/run-tests.cjs all"
+  },
+  "devDependencies": {
+    "jszip": "^3.10.1",
+    "playwright": "^1.55.0"
+  }
+}

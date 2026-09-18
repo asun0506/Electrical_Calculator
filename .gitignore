@@ -10,3 +10,8 @@ Desktop.ini
 # Local-only files
 _input_*.txt
 .worktrees/
+
+node_modules/
+playwright-report/
+test-results/
+.pnpm-store/
