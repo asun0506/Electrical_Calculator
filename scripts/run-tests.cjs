@@ -24,7 +24,7 @@ const groups = Object.freeze({
 });
 
 const defaultRoot = path.resolve(__dirname, '..');
-const excludedDirectoryNames = new Set(['.git', 'node_modules', 'output', 'tmp']);
+const excludedDirectoryNames = new Set(['.git', '.worktrees', 'node_modules', 'output', 'tmp']);
 
 function collectSyntaxFiles(root) {
   const resolvedRoot = path.resolve(root);
