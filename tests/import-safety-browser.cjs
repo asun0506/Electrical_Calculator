@@ -69,6 +69,11 @@ async function importFile(page, selector, text) {
         if (id === 'relay-fuse') bad.curves[0].color = 'red" onmouseover="window.__injected=true';
         if (id === 'dfmea') bad.rows[0].tags = {};
         rejected.push(JSON.stringify(bad), JSON.stringify({ ...after, oversized: 'x'.repeat(10 * 1024 * 1024) }));
+        if (id === 'sor-generator') {
+          const uppercaseSvg = copy(after);
+          uppercaseSvg.attachments[0].dataUrl = 'data:IMAGE/svg+xml;base64,PHN2Zz4=';
+          rejected.push(JSON.stringify(uppercaseSvg));
+        }
         for (const text of rejected) {
           await importFile(page, selector, text);
           assert.deepEqual(await page.evaluate(id => ElectricalToolkit.get(id).captureDraft(), id), after, `${id}: unsafe/oversized import preserves full project`);

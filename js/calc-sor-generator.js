@@ -456,7 +456,7 @@
     const scalar = v => v == null || ['string', 'number', 'boolean'].includes(typeof v);
     const record = v => S.isPlainObject(v) && Object.values(v).every(scalar);
     const image = v => record(v) && S.validateImageDataUrl(v.dataUrl);
-    const attachment = v => record(v) && typeof v.dataUrl === 'string' && /^data:[\w.+\/-]+;base64,[A-Za-z0-9+/]*={0,2}$/.test(v.dataUrl) && (!v.dataUrl.startsWith('data:image/') || S.validateImageDataUrl(v.dataUrl));
+    const attachment = v => record(v) && typeof v.dataUrl === 'string' && /^data:[\w.+\/-]+;base64,[A-Za-z0-9+/]*={0,2}$/.test(v.dataUrl) && (!/^data:image\//i.test(v.dataUrl) || S.validateImageDataUrl(v.dataUrl));
     return S.isPlainObject(data) && (data.meta == null || record(data.meta)) && record(data.fields) && S.isPlainObject(data.tables) &&
       Object.values(data.tables).every(rows => Array.isArray(rows) && rows.length <= 1000 && rows.every(row => Array.isArray(row) && row.length <= 100 && row.every(scalar))) &&
       (data.cellImages == null || (S.isPlainObject(data.cellImages) && Object.keys(data.cellImages).length <= 1000 && Object.values(data.cellImages).every(image))) &&
