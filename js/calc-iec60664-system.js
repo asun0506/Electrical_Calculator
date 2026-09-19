@@ -290,7 +290,7 @@
 
   function dimensionRow(levelIndex, dimIndex, dim, result) {
     const image = dim.image
-      ? `<div class="iec-image-controls"><button class="iec-image-button" data-action="preview-image" data-level="${levelIndex}" data-dim="${dimIndex}" title="单击放大截图"><img src="${dim.image}" alt="尺寸截图"></button><button class="btn btn-ghost btn-sm" data-action="pick-image" data-level="${levelIndex}" data-dim="${dimIndex}">更换附图</button></div>`
+      ? `<div class="iec-image-controls"><button class="iec-image-button" data-action="preview-image" data-level="${levelIndex}" data-dim="${dimIndex}" title="单击放大截图"><img src="${E.escapeHtml(dim.image)}" alt="尺寸截图"></button><button class="btn btn-ghost btn-sm" data-action="pick-image" data-level="${levelIndex}" data-dim="${dimIndex}">更换附图</button></div>`
       : `<button class="iec-image-empty" data-action="pick-image" data-level="${levelIndex}" data-dim="${dimIndex}">添加截图</button>`;
     const toleranceText = dim.toleranceMode === 'chain'
       ? `±${f(result.selectedTolerance)} (${verificationLabel(dim)})<small>${toleranceReferences(result)}</small>`
@@ -403,7 +403,7 @@
     return `
       <section class="panel iec-level-panel" data-level-panel="${levelIndex}">
         <div class="iec-level-title">
-          <div><span class="iec-level-code">${level.code}</span><h3>${level.name}系统边界</h3></div>
+          <div><span class="iec-level-code">${E.escapeHtml(level.code)}</span><h3>${E.escapeHtml(level.name)}系统边界</h3></div>
           <span class="iec-level-status ${summary.status}">${statusLabel(summary.status)}</span>
         </div>
         <div class="grid cols-4 iec-level-inputs">
@@ -438,7 +438,7 @@
           ${state.levels.map((level, index) => {
             const item = summaries[index];
             const s = item.standard;
-            return `<div class="iec-summary-card ${item.status}"><span>${level.name}</span><strong>${statusLabel(item.status)}</strong><small>${s.valid ? `电气间隙 ≥ ${f(s.clearance)} mm · 爬电距离 ≥ ${f(s.creepage)} mm` : E.escapeHtml(s.error)}</small><em>${item.completed}/${level.dimensions.length} 条完成，${item.failed} 条不通过</em></div>`;
+            return `<div class="iec-summary-card ${item.status}"><span>${E.escapeHtml(level.name)}</span><strong>${statusLabel(item.status)}</strong><small>${s.valid ? `电气间隙 ≥ ${f(s.clearance)} mm · 爬电距离 ≥ ${f(s.creepage)} mm` : E.escapeHtml(s.error)}</small><em>${item.completed}/${level.dimensions.length} 条完成，${item.failed} 条不通过</em></div>`;
           }).join('')}
         </div>
         <div class="status-banner ${statusClass(overall)}">${overall === 'pass' ? '三层边界下所有已建立的关键尺寸均按各自选定的公差判定方式通过。' : overall === 'fail' ? '至少一个层级存在参数错误或关键尺寸不满足要求，请查看红色条目。' : '请补充三个层级的关键尺寸并完成校核；未完成条目不计为通过。'}</div>
@@ -524,8 +524,12 @@
   }
 
   function compressImage(file, callback) {
+    if (file.size > 6 * 1024 * 1024) { alert('图片导入失败：图片不能超过 6 MB'); return; }
     const reader = new FileReader();
     reader.onload = () => {
+      let source;
+      try { source = window.ElectricalSafety.validateImageDataUrl(reader.result); }
+      catch (error) { alert(`图片导入失败：${error.message}`); return; }
       const img = new Image();
       img.onload = () => {
         const maxWidth = 1200;
@@ -534,9 +538,11 @@
         canvas.width = Math.max(1, Math.round(img.width * scale));
         canvas.height = Math.max(1, Math.round(img.height * scale));
         canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
-        callback(canvas.toDataURL('image/jpeg', 0.82));
+        try { callback(window.ElectricalSafety.validateImageDataUrl(canvas.toDataURL('image/jpeg', 0.82))); }
+        catch (error) { alert(`图片导入失败：${error.message}`); }
       };
-      img.src = reader.result;
+      img.onerror = () => alert('图片导入失败：无法读取图片');
+      img.src = source;
     };
     reader.readAsDataURL(file);
   }
@@ -551,7 +557,7 @@
       const tol = dim.toleranceMode === 'chain'
         ? `±${f(r.selectedTolerance)} (${tr(verificationLabel(dim))})<small>${tr(toleranceReferences(r))}</small>`
         : `${f(r.lower)} / +${f(r.upper)}`;
-      const image = dim.image ? `<img class="report-image" src="${dim.image}" alt="尺寸截图">` : '—';
+      const image = dim.image ? `<img class="report-image" src="${E.escapeHtml(dim.image)}" alt="尺寸截图">` : '—';
       const manual = decision.manual ? `<small>${tr('人工编辑结论')}</small>` : '';
       return tr`<tr><td>${index + 1}</td><td>${E.escapeHtml(dim.name || tr('未命名'))}</td><td>${image}</td><td>${tr(dim.kind === 'creepage' ? '爬电距离' : '电气间隙')}</td><td>${f(r.nominal)}</td><td>${tol}</td><td>${f(r.minimum)}</td><td>${f(r.spec)}</td><td>${E.escapeHtml(dim.note || '—')}</td><td class="report-${status === '通过' ? 'pass' : status === '不通过' ? 'fail' : 'pending'}">${tr(status)}${manual}</td></tr>`;
     }).join('');
@@ -585,7 +591,7 @@
         ${state.levels.map((level, index) => {
           const item = summaries[index];
           const s = item.standard;
-          return tr`<section class="report-level"><h2><span>${level.code}</span>${E.escapeHtml(level.name === LEVELS.find((item) => item.id === level.id)?.name ? tr(level.name) : level.name)}校核 — ${tr(statusLabel(item.status))}</h2>
+          return tr`<section class="report-level"><h2><span>${E.escapeHtml(level.code)}</span>${E.escapeHtml(level.name === LEVELS.find((item) => item.id === level.id)?.name ? tr(level.name) : level.name)}校核 — ${tr(statusLabel(item.status))}</h2>
             <table class="report-boundary"><tr><th>工作电压</th><td>${E.escapeHtml(level.voltage)} V</td><th>海拔</th><td>${E.escapeHtml(level.altitude)} m</td><th>污染等级</th><td>${E.escapeHtml(level.pollution)}</td><th>材料组别</th><td>${E.escapeHtml(level.material)}</td></tr>${s.valid ? tr`<tr><th>Uimp</th><td>${f(s.impulseKV)} kV</td><th>电气间隙标准</th><td>${f(s.clearance)} mm</td><th>爬电距离标准</th><td>${f(s.creepage)} mm</td><th>海拔系数</th><td>${f(s.altitudeFactor)}</td></tr>` : tr`<tr><td colspan="8" class="report-fail">${E.escapeHtml(tr(s.error))}</td></tr>`}</table>
             <table class="report-checks"><thead><tr><th>#</th><th>关键尺寸</th><th>截图</th><th>类别</th><th>名义/mm</th><th>公差/mm</th><th>最小/mm</th><th>标准/mm</th><th>备注</th><th>结论</th></tr></thead><tbody>${reportDimensionRows(level, item, lang)}</tbody></table>
             ${reportChainDetails(level, item, lang)}
@@ -607,7 +613,7 @@
   }
 
   function reportFilename(ext) {
-    const base = (state.project.name || '绝缘距离系统校核报告').replace(/[\\/:*?"<>|]/g, '_');
+    const base = window.ElectricalSafety.safeFilename(state.project.name || '绝缘距离系统校核报告');
     return `${base}_${state.project.date || today()}.${ext}`;
   }
 
@@ -662,16 +668,13 @@
 
   function importJson(file, input) {
     if (!file) return;
-    if (file.size > 30 * 1024 * 1024) {
-      alert('JSON 文件超过 30 MB，请减少或压缩截图后再导入。');
+    if (file.size > 10 * 1024 * 1024) {
+      alert('JSON 大小超过 10 MB，请减少或压缩截图后再导入。');
       input.value = '';
       return;
     }
     file.text().then((text) => {
-      const raw = JSON.parse(text);
-      if (!raw || raw.schemaVersion !== 1 || !raw.project || !Array.isArray(raw.levels)) {
-        throw new Error('文件不是有效的绝缘距离系统校核 JSON（schemaVersion 1）。');
-      }
+      const raw = window.ElectricalSafety.parseJson(text, { maxArrayLength: 1000, validate: validImport });
       if (!confirm('导入将替换当前校核的全部参数、关键尺寸和图片，是否继续？')) return;
       state = normalize(raw);
       if (persistNow()) {
@@ -681,6 +684,16 @@
     }).catch((error) => {
       alert(`导入失败：${error.message || 'JSON 文件格式错误'}`);
     }).finally(() => { input.value = ''; });
+  }
+
+  function validImport(data) {
+    const S = window.ElectricalSafety;
+    const scalar = v => v == null || ['string', 'number', 'boolean'].includes(typeof v);
+    const record = (v, except = []) => S.isPlainObject(v) && Object.entries(v).every(([key, value]) => except.includes(key) || scalar(value));
+    return S.isPlainObject(data) && data.schemaVersion === 1 && record(data.project) && Array.isArray(data.levels) && data.levels.length <= 3 && data.levels.every(level =>
+      record(level, ['dimensions']) && (level.dimensions == null || (Array.isArray(level.dimensions) && level.dimensions.every(dim =>
+        record(dim, ['contributors']) && (!dim.image || S.validateImageDataUrl(dim.image)) &&
+        (dim.contributors == null || (Array.isArray(dim.contributors) && dim.contributors.length <= 200 && dim.contributors.every(part => record(part))))))));
   }
 
   T.register({

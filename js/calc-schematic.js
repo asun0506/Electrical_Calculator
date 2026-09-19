@@ -22,7 +22,7 @@
   const clone=v=>JSON.parse(JSON.stringify(v));
   const today=()=>new Date().toISOString().slice(0,10);
   const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));
-  const safe=v=>String(v||'electrical-schematic').replace(/[\\/:*?"<>|]+/g,'_');
+  const safe=v=>window.ElectricalSafety.safeFilename(v||'electrical-schematic');
   const rotationValue=value=>((Math.round((Number(value)||0)/90)*90)%360+360)%360;
   const rotationOptions=value=>[0,90,180,270].map(angle=>`<option value="${angle}"${rotationValue(value)===angle?' selected':''}>${angle}°</option>`).join('');
   function rotatePoint(point,cx,cy,angle){const a=rotationValue(angle);if(!a)return{...point};const dx=point.x-cx,dy=point.y-cy,q=a===90?{x:cx-dy,y:cy+dx}:a===180?{x:cx-dx,y:cy-dy}:{x:cx+dy,y:cy-dx},sides=['top','right','bottom','left'],at=sides.indexOf(point.side);return{...point,...q,side:at<0?point.side:sides[(at+a/90)%4]};}
@@ -209,7 +209,11 @@
   }
   function clickPaletteEntity(e){const item=e.target.closest('[data-palette-type],[data-palette-kind]');if(item)addPaletteEntity(paletteSpec(item));}
   function dragPaletteEntity(e){const item=e.target.closest('[data-palette-type],[data-palette-kind]');if(!item)return;e.dataTransfer.setData('application/x-electrical-symbol',JSON.stringify(paletteSpec(item)));e.dataTransfer.setData('text/plain',item.dataset.paletteType||item.dataset.paletteKind||'component');e.dataTransfer.effectAllowed='copy';}
-  function dropPaletteEntity(e){e.preventDefault();let spec;try{spec=JSON.parse(e.dataTransfer.getData('application/x-electrical-symbol'));}catch(_){spec={type:e.dataTransfer.getData('text/plain')};}if(spec&&(spec.type||spec.kind))addPaletteEntity(spec,canvasPoint(e.clientX,e.clientY));}
+  function dropPaletteEntity(e){
+    e.preventDefault();const S=window.ElectricalSafety;
+    const valid=spec=>S.isPlainObject(spec)&&((typeof spec.type==='string'&&Object.prototype.hasOwnProperty.call(deviceTypes,spec.type))||['component','external-lv'].includes(spec.kind));
+    try{const raw=e.dataTransfer.getData('application/x-electrical-symbol'),spec=raw?S.parseJson(raw,{maxBytes:16384,maxDepth:3,maxArrayLength:10,validate:valid}):{type:e.dataTransfer.getData('text/plain')};if(valid(spec))addPaletteEntity(spec,canvasPoint(e.clientX,e.clientY));}catch(_){/* Ignore foreign or malformed palette data without changing the drawing. */}
+  }
   function rememberOpen(e){const c=e.target.closest('[data-component-editor]');if(c){const item=state.components.find(x=>x.id===c.dataset.componentEditor);if(item)item.open=c.open;}const k=e.target.closest('[data-connector-id]');if(k){for(const item of state.components){const conn=item.connectors.find(x=>x.id===k.dataset.connectorId);if(conn){conn.open=k.open;break;}}}}
   function clearWorkspaceDropMarks(){host.querySelectorAll('.sch-workspace-dragging,.sch-drop-before,.sch-drop-after').forEach(el=>el.classList.remove('sch-workspace-dragging','sch-drop-before','sch-drop-after'));}
   function workspaceDragStart(e){const handle=e.target.closest('[data-workspace-drag]');if(!handle)return;workspaceDragId=handle.dataset.workspaceDrag;e.dataTransfer.effectAllowed='move';e.dataTransfer.setData('text/plain',workspaceDragId);requestAnimationFrame(()=>handle.closest('[data-component-editor]')?.classList.add('sch-workspace-dragging'));}
@@ -401,7 +405,24 @@
   function checkPins(show){const missing=unconnectedPins(),invalidCan=invalidCanPairs(),invalidGroups=invalidTwistedGroups();if(show){if(!missing.length&&!invalidCan.length&&!invalidGroups.length)alert('检查完成：所有连接器Pin均已连接，Twisted_Pair 均已精确成对。');else alert(`${invalidGroups.length?`发现 ${invalidGroups.length} 个 Pin 配对设置错误：\n${invalidGroups.slice(0,20).map(x=>`• ${x.component} / ${x.connector}：${x.message}`).join('\n')}\n\n`:''}${invalidCan.length?`发现 ${invalidCan.length} 组 Twisted_Pair 未按配对编号配齐两端。\n\n`:''}${missing.length?`发现 ${missing.length} 个未连接Pin：\n\n${missing.slice(0,25).map(x=>`• ${x.label}`).join('\n')}${missing.length>25?'\n…':''}`:''}`);}return missing;}
   function download(blob,name){const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
   function exportJson(){download(new Blob([JSON.stringify({...clone(state),exportedAt:new Date().toISOString()},null,2)],{type:'application/json'}),`${safe(state.meta.drawingNo)}_${safe(state.meta.version)}.json`);}
-  async function importJson(e){const f=e.target.files&&e.target.files[0];if(!f)return;try{state=normalize(JSON.parse(await f.text()));render();}catch(err){alert(`导入失败：${err.message}`);}finally{e.target.value='';}}
+  function validImport(data){
+    const S=window.ElectricalSafety;
+    const numeric=new Set(['x','y','w','h','offset','rotation','canvasZoom','gridSize','legendX','legendY','workspaceOrder']);
+    const record=(v,collections=[])=>S.isPlainObject(v)&&Object.entries(v).every(([key,value])=>{
+      if(collections.includes(key))return true;
+      if(value!=null&&!['string','number','boolean'].includes(typeof value))return false;
+      if(value!=null&&(key==='id'||/Id$/.test(key)||['from','to','pairFrom','pairTo'].includes(key)))return typeof value==='string'&&/^[\w:-]*$/.test(value);
+      if(value!=null&&numeric.has(key))return (typeof value==='number'||typeof value==='string')&&Number.isFinite(Number(value))&&!/[<>"']/.test(String(value));
+      return true;
+    });
+    const list=(v,max,validate)=>v==null||(Array.isArray(v)&&v.length<=max&&v.every(validate));
+    const point=p=>record(p);
+    const target=t=>record(t,['waypoints'])&&list(t.waypoints,500,point);
+    const connector=k=>record(k,['pins'])&&list(k.pins,96,p=>record(p));
+    const device=d=>record(d,['ports'])&&list(d.ports,96,p=>typeof p==='string'||typeof p==='number');
+    return S.isPlainObject(data)&&(data.meta==null||record(data.meta))&&Array.isArray(data.components)&&data.components.length<=500&&data.components.every(c=>record(c,['connectors','devices'])&&list(c.connectors,100,connector)&&list(c.devices,200,device))&&list(data.connections,2000,w=>record(w,['targets'])&&list(w.targets,200,target))&&list(data.revisions,1000,r=>record(r));
+  }
+  async function importJson(e){const f=e.target.files&&e.target.files[0];if(!f)return;try{if(f.size>10*1024*1024)throw new Error('JSON 大小不能超过 10 MB');const next=normalize(window.ElectricalSafety.parseJson(await f.text(),{maxArrayLength:2000,validate:validImport}));state=next;render();}catch(err){alert(`导入失败：${err.message}`);}finally{e.target.value='';}}
   function invalidCanPairs(){return state.connections.filter(w=>w.type==='can'&&!canPairComplete(w));}
   function validateForOutput(){const invalidGroups=invalidTwistedGroups();if(invalidGroups.length){alert(`还有 ${invalidGroups.length} 个 Pin 的 Twisted_Pair 配对编号设置错误，请确保同一连接器内每个配对编号恰好对应两个 Pin。`);return false;}const invalidCan=invalidCanPairs();if(invalidCan.length){alert(`还有 ${invalidCan.length} 组 Twisted_Pair 没有按 Pin 配对编号配齐两端，请补充后再导出。`);return false;}const missingGauge=state.connections.filter(w=>!String(w.gauge||'').trim());if(missingGauge.length){alert(`还有 ${missingGauge.length} 条线路未填写线径，请补充后再导出。`);return false;}const missingPins=unconnectedPins();if(missingPins.length&&!confirm(`还有 ${missingPins.length} 个连接器Pin未连接，是否仍要导出？`))return false;return true;}
   function exportSvg(){if(!validateForOutput())return;download(new Blob([diagramSvg(false)],{type:'image/svg+xml;charset=utf-8'}),`${safe(state.meta.drawingNo)}_${safe(state.meta.version)}.svg`);}

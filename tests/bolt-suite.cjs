@@ -8,6 +8,7 @@ const root=path.resolve(__dirname,'..');let browser;
   browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',headless:true,args:['--allow-file-access-from-files']});
   const page=await browser.newPage({viewport:{width:1600,height:1000},acceptDownloads:true});const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto(pathToFileURL(path.join(root,'index.html')).href);await page.evaluate(()=>localStorage.clear());await page.reload();await page.evaluate(()=>ElectricalToolkit.open('bolt'));
+  await require('./import-safety-helpers.cjs').assertRejectedImport(page, 'bolt');
   await page.locator('[data-meta="projectName"]').fill('换电电池包项目');await page.locator('[data-meta="reportName"]').fill('紧固连接校核');await page.locator('[data-meta="preparedBy"]').fill('工程师A');
   await page.locator('[data-part-name]').fill('EDM总成');await page.locator('[data-joint-field="name"]').fill('主铜排连接界面');
   assert.match(await page.locator('.bt-result').innerText(),/校核/);assert.match(await page.locator('#btOverall').innerText(),/通过|不通过/);

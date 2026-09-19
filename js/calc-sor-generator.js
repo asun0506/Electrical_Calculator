@@ -41,7 +41,7 @@
   }
 
   function normalizeFileName(value, ext) {
-    const safe = String(value || 'SOR').trim().replace(/[\\/:*?"<>|]+/g, '_').replace(/\.+$/g, '') || 'SOR';
+    const safe = window.ElectricalSafety.safeFilename(value || 'SOR');
     return safe.toLowerCase().endsWith(ext) ? safe : safe + ext;
   }
 
@@ -362,13 +362,15 @@
   async function importCellImage(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
-    if (!['image/png', 'image/jpeg'].includes(file.type)) {
-      window.alert('表格内图片请使用 PNG 或 JPG 格式。');
+    if (file.size > 6 * 1024 * 1024) {
+      window.alert('图片导入失败：图片不能超过 6 MB。');
       event.target.value = '';
       return;
     }
     const openIds = captureOpenSections();
-    const dataUrl = await readFileDataUrl(file);
+    let dataUrl;
+    try { dataUrl = window.ElectricalSafety.validateImageDataUrl(await readFileDataUrl(file)); }
+    catch (error) { window.alert(`图片导入失败：${error.message}`); event.target.value = ''; return; }
     const size = await readImageSize(dataUrl);
     state.cellImages[event.target.dataset.cellImage] = {
       name: file.name,
@@ -400,7 +402,12 @@
     const category = hostRef.querySelector('#sorAttachmentCategory').value;
     const note = hostRef.querySelector('#sorAttachmentNote').value.trim();
     for (const file of Array.from(event.target.files || [])) {
-      state.attachments.push({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, category, note, dataUrl: await readFileDataUrl(file) });
+      try {
+        if (file.type.startsWith('image/') && file.size > 6 * 1024 * 1024) throw new Error('图片不能超过 6 MB');
+        const dataUrl = await readFileDataUrl(file);
+        if (dataUrl.startsWith('data:image/')) window.ElectricalSafety.validateImageDataUrl(dataUrl);
+        state.attachments.push({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, category, note, dataUrl });
+      } catch (error) { window.alert(`附件导入失败：${error.message}`); }
     }
     render();
   }
@@ -425,8 +432,8 @@
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     try {
-      const data = JSON.parse(await file.text());
-      if (!data.fields || !data.tables) throw new Error('文件中缺少 SOR 字段或表格数据');
+      if (file.size > 10 * 1024 * 1024) throw new Error('JSON 大小不能超过 10 MB');
+      const data = window.ElectricalSafety.parseJson(await file.text(), { maxArrayLength: 1000, validate: validImport });
       const next = defaultState();
       next.meta = { ...next.meta, ...(data.meta || {}) };
       Object.keys(next.fields).forEach((id) => { if (Object.prototype.hasOwnProperty.call(data.fields, id)) next.fields[id] = data.fields[id]; });
@@ -442,6 +449,18 @@
     } finally {
       event.target.value = '';
     }
+  }
+
+  function validImport(data) {
+    const S = window.ElectricalSafety;
+    const scalar = v => v == null || ['string', 'number', 'boolean'].includes(typeof v);
+    const record = v => S.isPlainObject(v) && Object.values(v).every(scalar);
+    const image = v => record(v) && S.validateImageDataUrl(v.dataUrl);
+    const attachment = v => record(v) && typeof v.dataUrl === 'string' && /^data:[\w.+\/-]+;base64,[A-Za-z0-9+/]*={0,2}$/.test(v.dataUrl) && (!v.dataUrl.startsWith('data:image/') || S.validateImageDataUrl(v.dataUrl));
+    return S.isPlainObject(data) && (data.meta == null || record(data.meta)) && record(data.fields) && S.isPlainObject(data.tables) &&
+      Object.values(data.tables).every(rows => Array.isArray(rows) && rows.length <= 1000 && rows.every(row => Array.isArray(row) && row.length <= 100 && row.every(scalar))) &&
+      (data.cellImages == null || (S.isPlainObject(data.cellImages) && Object.keys(data.cellImages).length <= 1000 && Object.values(data.cellImages).every(image))) &&
+      (data.attachments == null || (Array.isArray(data.attachments) && data.attachments.length <= 100 && data.attachments.every(attachment)));
   }
 
   function xmlEscape(value) {

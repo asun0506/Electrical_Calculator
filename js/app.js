@@ -217,12 +217,7 @@
 
   /** HTML 转义，防注入 */
   function escapeHtml(str) {
-    return String(str)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+    return window.ElectricalSafety.escapeHtml(str);
   }
 
   /** 数值解析：容忍逗号，空串返回 null */

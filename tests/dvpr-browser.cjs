@@ -15,6 +15,7 @@ let browser;
   await page.evaluate(()=>localStorage.clear()); await page.reload();
   await page.evaluate(()=>ElectricalToolkit.open('dvpr'));
   await page.waitForSelector('[data-product="hv-connector"]');
+  await require('./import-safety-helpers.cjs').assertRejectedImport(page, 'dvpr');
 
   const audit=await page.evaluate(()=>({
     products:DVPR_LIBRARY.products.map(p=>p.id),

@@ -215,18 +215,17 @@
   async function importRowImage(event) {
     const file = event.target.files && event.target.files[0];
     if (!file) return;
-    if (!['image/png', 'image/jpeg'].includes(file.type)) {
-      window.alert('导体附图请使用 PNG 或 JPG 格式。');
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      window.alert('单张图片不能超过 10 MB。');
+    if (file.size > 6 * 1024 * 1024) {
+      window.alert('单张图片不能超过 6 MB。');
       return;
     }
     const item = state.conductors.find((row) => row.id === event.target.dataset.rowImage);
     if (!item) return;
-    item.image = { name: file.name, type: file.type, size: file.size, dataUrl: await readFileDataUrl(file) };
-    render();
+    try {
+      const dataUrl = window.ElectricalSafety.validateImageDataUrl(await readFileDataUrl(file));
+      item.image = { name: file.name, type: file.type, size: file.size, dataUrl };
+      render();
+    } catch (error) { window.alert(`图片导入失败：${error.message}`); }
   }
 
   function tokenize(expression) {
@@ -360,9 +359,12 @@
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     try {
-      if (file.size > 30 * 1024 * 1024) throw new Error('JSON 文件不能超过 30 MB');
-      const data = JSON.parse(await file.text());
-      if (!Array.isArray(data.conductors) || !data.conductors.length) throw new Error('文件中没有导体段数据');
+      const S = window.ElectricalSafety;
+      if (file.size > 10 * 1024 * 1024) throw new Error('JSON 大小不能超过 10 MB');
+      const data = S.parseJson(await file.text(), { maxArrayLength: 1000, validate: data =>
+        S.isPlainObject(data) && Array.isArray(data.conductors) && data.conductors.length > 0 &&
+        data.conductors.every(item => S.isPlainObject(item) && Object.entries(item).every(([key, value]) => key === 'image' || value == null || ['string', 'number', 'boolean'].includes(typeof value)) &&
+          (!item.image || (S.isPlainObject(item.image) && S.validateImageDataUrl(item.image.dataUrl)))) });
       const next = defaultState();
       next.displayUnit = RESISTANCE_UNITS[data.displayUnit] ? data.displayUnit : next.displayUnit;
       next.expression = typeof data.expression === 'string' ? data.expression : 'R1';

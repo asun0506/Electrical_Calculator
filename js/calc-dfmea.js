@@ -115,7 +115,13 @@
   }
   async function importJson(event) {
     const file=event.target.files[0];event.target.value='';if(!file)return;
-    try{const data=JSON.parse(await file.text());if(!Array.isArray(data.rows))throw new Error('文件中没有rows数组');state.rows=migrateRows(data.rows,data.version);renderWork();}catch(error){alert('JSON导入失败：'+error.message);}
+    try{
+      const S=window.ElectricalSafety;
+      if(file.size>10*1024*1024)throw new Error('JSON 大小不能超过 10 MB');
+      const data=S.parseJson(await file.text(),{maxArrayLength:5000,validate:data=>S.isPlainObject(data)&&Array.isArray(data.rows)&&data.rows.every(row=>
+        S.isPlainObject(row)&&Object.entries(row).every(([key,value])=>key==='tags'?(Array.isArray(value)&&value.length<=100&&value.every(tag=>typeof tag==='string')):value==null||['string','number','boolean'].includes(typeof value)))});
+      state.rows=migrateRows(data.rows,data.version);renderWork();
+    }catch(error){alert('JSON导入失败：'+error.message);}
   }
 
   function migrateRows(rows,version){

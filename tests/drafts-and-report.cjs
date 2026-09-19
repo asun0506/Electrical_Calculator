@@ -40,6 +40,10 @@ async function roundTrip(id) {
 }
 (async () => {
   await start();
+  for (const id of ['conductor', 'relay-fuse', 'iec60664', 'sor-generator']) {
+    await open(id);
+    await require('./import-safety-helpers.cjs').assertRejectedImport(page, id);
+  }
   const ids = await page.evaluate(() => ElectricalToolkit.list().map((calc) => calc.id));
   for (const id of ids) {
     await open(id);

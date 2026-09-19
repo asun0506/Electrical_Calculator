@@ -7,10 +7,11 @@ const JSZip = require('jszip');
 (async () => {
   const browser = await chromium.launch({ headless: true, executablePath: 'C:/Program Files/Google/Chrome/Application/chrome.exe' });
   const page = await browser.newPage({ viewport: { width: 1500, height: 900 }, acceptDownloads: true });
-  await page.goto('file:///F:/Agent/Codex/Electrical_Web/index.html');
+  await page.goto(require('node:url').pathToFileURL(path.resolve(__dirname, '../index.html')).href);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.locator('.nav-item[data-id="dfmea"]').click();
+  await require('./import-safety-helpers.cjs').assertRejectedImport(page, 'dfmea');
   const counts = await page.locator('.df-counts b').allTextContents();
   assert.deepEqual(counts, ['58', '245']);
   const widths = await page.locator('.df-table thead th').evaluateAll((cells) => cells.slice(0, 5).map((cell) => Math.round(cell.getBoundingClientRect().width)));

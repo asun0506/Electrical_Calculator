@@ -5,6 +5,7 @@ const path = require('node:path');
 const runner = require('../scripts/run-tests.cjs');
 
 assert.deepEqual(runner.groups.unit, [
+  'tests/safety.cjs',
   'tests/busbar-merged.cjs',
   'tests/dfmea.cjs',
   'tests/standards-data.cjs',

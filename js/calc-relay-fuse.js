@@ -395,9 +395,23 @@
 
   function importData(file) {
     if (!file) return;
+    if (file.size > 10 * 1024 * 1024) { window.alert('导入失败：JSON 大小不能超过 10 MB'); return; }
     const reader = new FileReader();
-    reader.onload = () => { try { const data = JSON.parse(reader.result); if (!data || data.type !== 'relay-fuse') throw new Error('type 不匹配'); applyAll(data); } catch (error) { window.alert(`导入失败：${error.message}`); } };
+    reader.onload = () => { try { const data = window.ElectricalSafety.parseJson(reader.result, { maxArrayLength: 2000, validate: validImport }); applyAll(data); } catch (error) { window.alert(`导入失败：${error.message}`); } };
     reader.readAsText(file);
+  }
+
+  function validImport(data) {
+    const S = window.ElectricalSafety;
+    const scalar = value => value == null || ['string', 'number', 'boolean'].includes(typeof value);
+    const record = value => S.isPlainObject(value) && Object.values(value).every(scalar);
+    return S.isPlainObject(data) && data.type === 'relay-fuse' &&
+      (data.range == null || record(data.range)) &&
+      (data.battery == null || (S.isPlainObject(data.battery) && Object.entries(data.battery).every(([key, value]) => key === 'components' || scalar(value)) &&
+        (data.battery.components == null || (Array.isArray(data.battery.components) && data.battery.components.length <= 1000 && data.battery.components.every(record))))) &&
+      (data.curves == null || (Array.isArray(data.curves) && data.curves.length <= 100 && data.curves.every(curve =>
+        S.isPlainObject(curve) && scalar(curve.name) && (curve.color == null || /^#[0-9a-f]{6}$/i.test(curve.color)) &&
+        (curve.points == null || (Array.isArray(curve.points) && curve.points.every(point => Array.isArray(point) && point.length === 2 && point.every(scalar)))))));
   }
 
   function normalizeImportedBattery(source, legacyShortCircuit) {

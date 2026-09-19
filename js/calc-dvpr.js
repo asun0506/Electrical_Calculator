@@ -29,7 +29,7 @@
   }
   function formatBytes(n){ if(n<1024)return `${n} B`; if(n<1048576)return `${(n/1024).toFixed(1)} KB`; return `${(n/1048576).toFixed(1)} MB`; }
   function download(blob,name){ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000); }
-  function fileSafe(v){ return String(v||'DVP&R').replace(/[\\/:*?\"<>|]+/g,'_').trim()||'DVP&R'; }
+  function fileSafe(v){ return window.ElectricalSafety.safeFilename(v||'DVP&R'); }
 
   function render(host){
     hostRef=host;
@@ -62,7 +62,7 @@
   }
   function rowHtml(row){
     const attachments=row.attachments||[];
-    return `<tr data-row="${row.id}"><td class="dv-product-cell"><select data-field="productId">${LIB.products.map(p=>`<option value="${p.id}"${p.id===row.productId?' selected':''}>${esc(p.name)}</option>`).join('')}<option value=""${row.productId?'':' selected'}>自定义</option></select><input data-field="productName" value="${esc(row.productName)}" placeholder="自定义名称"></td>
+    return `<tr data-row="${esc(row.id)}"><td class="dv-product-cell"><select data-field="productId">${LIB.products.map(p=>`<option value="${p.id}"${p.id===row.productId?' selected':''}>${esc(p.name)}</option>`).join('')}<option value=""${row.productId?'':' selected'}>自定义</option></select><input data-field="productName" value="${esc(row.productName)}" placeholder="自定义名称"></td>
       ${COLUMNS.map(([key])=>`<td>${key==='reportNo'?`${textarea(row,key)}<div class="dv-files">${attachments.map((f,i)=>`<span title="${esc(f.name)}">${esc(f.name)} (${formatBytes(f.size||0)}) <a href="${esc(f.dataUrl||'#')}" download="${esc(f.name)}">下载</a> <button type="button" data-remove-file="${i}">×</button></span>`).join('')}<label>添加附件<input type="file" multiple data-attach></label></div>`:textarea(row,key)}</td>`).join('')}
       <td class="dv-op"><button type="button" data-copy>复制</button><button type="button" data-delete>删除</button></td></tr>`;
   }
@@ -116,7 +116,7 @@
   }
   async function onFileChange(event){
     if(!event.target.matches('[data-attach]'))return;const row=findRow(event.target);if(!row)return;
-    const files=[...event.target.files];for(const file of files){if(file.size>12*1024*1024){alert(`${file.name} 超过12MB，未添加。`);continue;}row.attachments.push({name:file.name,type:file.type||'application/octet-stream',size:file.size,dataUrl:await readDataUrl(file)});}renderRows();
+    const files=[...event.target.files];for(const file of files){try{if(file.size>12*1024*1024)throw new Error('附件超过 12 MB');if(file.type.startsWith('image/')&&file.size>6*1024*1024)throw new Error('图片不能超过 6 MB');const dataUrl=await readDataUrl(file);if(dataUrl.startsWith('data:image/'))window.ElectricalSafety.validateImageDataUrl(dataUrl);row.attachments.push({name:file.name,type:file.type||'application/octet-stream',size:file.size,dataUrl});}catch(error){alert(`${file.name} 导入失败：${error.message}`);}}renderRows();
   }
   function readDataUrl(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});}
   function onPaste(event){
@@ -127,7 +127,14 @@
   }
   function exportJson(){download(new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'}),`${fileSafe(state.meta.projectName)}_DVPR.json`);}
   async function importJson(event){
-    const file=event.target.files[0];if(!file)return;try{const parsed=JSON.parse(await file.text());state=normalize(parsed);render(hostRef);alert(`已导入 ${state.rows.length} 条验证项目，附件已一并恢复。`);}catch(error){alert(`JSON导入失败：${error.message}`);}event.target.value='';
+    const file=event.target.files[0];if(!file)return;try{if(file.size>10*1024*1024)throw new Error('JSON 大小不能超过 10 MB');const parsed=window.ElectricalSafety.parseJson(await file.text(),{maxArrayLength:5000,validate:validImport});state=normalize(parsed);render(hostRef);alert(`已导入 ${state.rows.length} 条验证项目，附件已一并恢复。`);}catch(error){alert(`JSON导入失败：${error.message}`);}event.target.value='';
+  }
+  function validImport(data){
+    const S=window.ElectricalSafety,scalar=v=>v==null||['string','number','boolean'].includes(typeof v);
+    const record=(v,except=[])=>S.isPlainObject(v)&&Object.entries(v).every(([key,value])=>except.includes(key)||scalar(value));
+    const strings=v=>Array.isArray(v)&&v.every(x=>typeof x==='string');
+    const attachment=v=>record(v)&&typeof v.dataUrl==='string'&&/^data:[\w.+\/-]+;base64,[A-Za-z0-9+/]*={0,2}$/.test(v.dataUrl)&&(!/^data:image\//i.test(v.dataUrl)||S.validateImageDataUrl(v.dataUrl));
+    return S.isPlainObject(data)&&(data.meta==null||record(data.meta))&&(data.selectedProducts==null||strings(data.selectedProducts))&&(data.selectedStandards==null||strings(data.selectedStandards))&&Array.isArray(data.rows)&&data.rows.every(row=>record(row,['attachments'])&&(row.attachments==null||(Array.isArray(row.attachments)&&row.attachments.length<=100&&row.attachments.every(attachment))));
   }
   function sheetRows(){
     const meta=state.meta;return [
