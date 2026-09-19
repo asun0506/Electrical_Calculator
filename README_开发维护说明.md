@@ -119,6 +119,24 @@ corepack pnpm exec playwright install chromium
 corepack pnpm test
 ```
 
+### 工程数值回归基线
+
+`tests/fixtures/formula-cases.json` 使用 `schemaVersion: 1`，记录七个模块的正常、边界和无效输入案例。每例包含 `module`、`inputs`、`expected`、`absoluteTolerance`、`source`、`caseType`；无效输入以验证类别和可见提示片段替代数值。新增案例必须注明独立公式或已打包标准表的行列来源，不能只抄录页面输出。
+
+`tests/formula-regression.cjs` 先用独立计算复核夹具，再通过 Playwright 以 `file://` 打开真实页面，逐例清空存储、填写控件并读取结果卡。选择器集中在 `adapters`，JSON 不包含选择器；有计算按钮的模块点击按钮，实时计算模块使用原有输入/变更事件。测试属于 browser 组，已纳入 `corepack pnpm test`。
+
+```powershell
+corepack pnpm exec node tests/formula-regression.cjs
+# 仅运行一个模块（夹具契约与独立复算仍检查全部案例）
+corepack pnpm exec node tests/formula-regression.cjs precharge
+# 可选：使用已有 Chrome；未设置时使用 Playwright 安装的 Chromium
+$env:CHROME_PATH='C:\Program Files\Google\Chrome\Application\chrome.exe'
+```
+
+容差以页面显示精度为限：常规三位小数结果采用 0.0005，导体六位小数采用 0.0000005，公差四位小数采用 0.00005；夹具数值另以 1e-8 做独立复算检查。调整公式或标准数据时，先复核来源及适用条件，再更新期望值和说明，不能扩大容差掩盖差异。
+
+此基线保护现有简化模型：预充能量按全充电 `CV²/2`；汇流排以恒流闭式解核对固定步长热平衡，并覆盖零电流冷却；IEC 对照本地 F.2/F.5 与海拔表图片，保留当前冲击电压估算及向上取档约定。它不替代实际产品设计验证，也不覆盖所有材料、拓扑或标准条件。
+
 ## 入口与模块机制
 
 - 网站入口：`index.html`

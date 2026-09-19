@@ -1,0 +1,562 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "relay-pack-400v-100mohm",
+      "module": "relay-fuse",
+      "caseType": "nominal",
+      "inputs": {
+        "voltageV": 400,
+        "directResistanceMohm": 100
+      },
+      "expected": {
+        "shortCircuitCurrentA": 4000
+      },
+      "absoluteTolerance": {
+        "shortCircuitCurrentA": 0.001
+      },
+      "source": "Ohm law I=U/R; input resistance mOhm / 1000 converts to Ohm."
+    },
+    {
+      "id": "relay-pack-small-positive-resistance",
+      "module": "relay-fuse",
+      "caseType": "boundary",
+      "inputs": {
+        "voltageV": 1,
+        "directResistanceMohm": 0.001
+      },
+      "expected": {
+        "shortCircuitCurrentA": 1000000
+      },
+      "absoluteTolerance": {
+        "shortCircuitCurrentA": 0.001
+      },
+      "source": "Ohm law I=U/R; input resistance mOhm / 1000 converts to Ohm. Near the strictly positive resistance boundary."
+    },
+    {
+      "id": "relay-pack-zero-resistance",
+      "module": "relay-fuse",
+      "caseType": "invalid",
+      "inputs": {
+        "voltageV": 400,
+        "directResistanceMohm": 0
+      },
+      "expected": {
+        "validationCategory": "error",
+        "messageFragment": "整包定值电阻必须大于 0"
+      },
+      "absoluteTolerance": {},
+      "source": "Ohm law requires positive nonzero resistance."
+    },
+    {
+      "id": "conductor-hot-copper-parallel",
+      "module": "conductor",
+      "caseType": "nominal",
+      "inputs": {
+        "material": "copper",
+        "lengthMm": 500,
+        "widthMm": 5,
+        "heightMm": 1,
+        "temperatureC": 80,
+        "quantity": 2,
+        "quantityRelation": "parallel"
+      },
+      "expected": {
+        "resistanceMohm": 1.062788
+      },
+      "absoluteTolerance": {
+        "resistanceMohm": 5e-7
+      },
+      "source": "R=rho20*(1+alpha*(T-20))*L/A/n; bundled copper rho20=1.72e-8 Ohm*m, alpha=0.00393/K; 500 mm / (5*1 mm2)."
+    },
+    {
+      "id": "conductor-reference-temperature-minimum-quantity",
+      "module": "conductor",
+      "caseType": "boundary",
+      "inputs": {
+        "material": "copper",
+        "lengthMm": 500,
+        "widthMm": 5,
+        "heightMm": 1,
+        "temperatureC": 20,
+        "quantity": 1,
+        "quantityRelation": "parallel"
+      },
+      "expected": {
+        "resistanceMohm": 1.72
+      },
+      "absoluteTolerance": {
+        "resistanceMohm": 5e-7
+      },
+      "source": "At reference temperature 20 C and minimum quantity n=1, R=1.72e-8*0.5/(5e-6)=0.00172 Ohm."
+    },
+    {
+      "id": "conductor-zero-width",
+      "module": "conductor",
+      "caseType": "invalid",
+      "inputs": {
+        "material": "copper",
+        "lengthMm": 500,
+        "widthMm": 0,
+        "heightMm": 1,
+        "temperatureC": 80,
+        "quantity": 2,
+        "quantityRelation": "parallel"
+      },
+      "expected": {
+        "validationCategory": "error",
+        "messageFragment": "长度、宽度和厚度必须大于 0"
+      },
+      "absoluteTolerance": {},
+      "source": "R=rho*L/A requires positive cross-section."
+    },
+    {
+      "id": "precharge-400v-1500uf-95pct-500ms",
+      "module": "precharge",
+      "caseType": "nominal",
+      "inputs": {
+        "capacitanceUf": 1500,
+        "voltageV": 400,
+        "targetPercent": 95,
+        "timeMs": 500
+      },
+      "expected": {
+        "resistanceOhm": 111.269400231778,
+        "peakCurrentA": 3.594878728265,
+        "storedEnergyJ": 120
+      },
+      "absoluteTolerance": {
+        "resistanceOhm": 0.0005,
+        "peakCurrentA": 0.0005,
+        "storedEnergyJ": 0.0005
+      },
+      "source": "R=-t/(C ln(1-f)); I=V/R; E=CV^2/2 (full-charge energy model)."
+    },
+    {
+      "id": "precharge-99p9pct",
+      "module": "precharge",
+      "caseType": "boundary",
+      "inputs": {
+        "capacitanceUf": 1500,
+        "voltageV": 400,
+        "targetPercent": 99.9,
+        "timeMs": 500
+      },
+      "expected": {
+        "resistanceOhm": 48.254942433695,
+        "peakCurrentA": 8.289306334779,
+        "storedEnergyJ": 120
+      },
+      "absoluteTolerance": {
+        "resistanceOhm": 0.0005,
+        "peakCurrentA": 0.0005,
+        "storedEnergyJ": 0.0005
+      },
+      "source": "R=-t/(C ln(1-f)); I=V/R; E=CV^2/2; highest advertised target 99.9%, approaching singular 100%."
+    },
+    {
+      "id": "precharge-100pct-invalid",
+      "module": "precharge",
+      "caseType": "invalid",
+      "inputs": {
+        "capacitanceUf": 1500,
+        "voltageV": 400,
+        "targetPercent": 100,
+        "timeMs": 500
+      },
+      "expected": {
+        "validationCategory": "error",
+        "messageFragment": "不含边界"
+      },
+      "absoluteTolerance": {},
+      "source": "Finite-time RC charging requires 0<f<1."
+    },
+    {
+      "id": "busbar-constant-current-ten-seconds",
+      "module": "busbar-temp",
+      "caseType": "nominal",
+      "inputs": {
+        "currentPoints": [
+          [
+            0,
+            100
+          ],
+          [
+            10,
+            100
+          ]
+        ],
+        "material": "custom",
+        "resistivityOhmM": 1e-8,
+        "specificHeatJkgK": 1000,
+        "densityKgm3": 1000,
+        "widthMm": 10,
+        "thicknessMm": 10,
+        "lengthMm": 100,
+        "heatTransferWm2K": 10,
+        "ambientC": 20,
+        "initialC": 20,
+        "stepS": 0.1
+      },
+      "expected": {
+        "rmsCurrentA": 100,
+        "averageCurrentA": 100,
+        "resistanceMicroOhm": 10,
+        "finalTemperatureC": 20.098045622957,
+        "steadyTemperatureC": 22.5
+      },
+      "absoluteTolerance": {
+        "rmsCurrentA": 0.0005,
+        "averageCurrentA": 0.0005,
+        "resistanceMicroOhm": 0.0005,
+        "finalTemperatureC": 0.0005,
+        "steadyTemperatureC": 0.0005
+      },
+      "source": "Independent closed form of fixed-step heat balance: R=rho*L/A=1e-5 Ohm; Cth=10 J/K; hS=0.04 W/K; T_N=Tamb+I^2R/(hS)+(T0-Tamb-I^2R/(hS))*(1-hS*dt/Cth)^N; N=100."
+    },
+    {
+      "id": "busbar-zero-current-cooling",
+      "module": "busbar-temp",
+      "caseType": "boundary",
+      "inputs": {
+        "currentPoints": [
+          [
+            5,
+            0
+          ],
+          [
+            15,
+            0
+          ]
+        ],
+        "material": "custom",
+        "resistivityOhmM": 1e-8,
+        "specificHeatJkgK": 1000,
+        "densityKgm3": 1000,
+        "widthMm": 10,
+        "thicknessMm": 10,
+        "lengthMm": 100,
+        "heatTransferWm2K": 10,
+        "ambientC": 20,
+        "initialC": 30,
+        "stepS": 0.1
+      },
+      "expected": {
+        "rmsCurrentA": 0,
+        "averageCurrentA": 0,
+        "resistanceMicroOhm": 10,
+        "finalTemperatureC": 29.607817508173,
+        "steadyTemperatureC": 20
+      },
+      "absoluteTolerance": {
+        "rmsCurrentA": 0.0005,
+        "averageCurrentA": 0.0005,
+        "resistanceMicroOhm": 0.0005,
+        "finalTemperatureC": 0.0005,
+        "steadyTemperatureC": 0.0005
+      },
+      "source": "Zero-current boundary, nonzero start time: Joule heat=0; T_N=20+10*(1-0.04*0.1/10)^100."
+    },
+    {
+      "id": "busbar-duplicate-time",
+      "module": "busbar-temp",
+      "caseType": "invalid",
+      "inputs": {
+        "currentPoints": [
+          [
+            0,
+            100
+          ],
+          [
+            0,
+            100
+          ]
+        ],
+        "material": "custom",
+        "resistivityOhmM": 1e-8,
+        "specificHeatJkgK": 1000,
+        "densityKgm3": 1000,
+        "widthMm": 10,
+        "thicknessMm": 10,
+        "lengthMm": 100,
+        "heatTransferWm2K": 10,
+        "ambientC": 20,
+        "initialC": 20,
+        "stepS": 0.1
+      },
+      "expected": {
+        "validationCategory": "error",
+        "messageFragment": "时间点未严格递增"
+      },
+      "absoluteTolerance": {},
+      "source": "Time samples must be strictly increasing."
+    },
+    {
+      "id": "iec-230v-pd2-iiia",
+      "module": "iec60664",
+      "caseType": "nominal",
+      "inputs": {
+        "voltageV": 230,
+        "altitudeM": 2000,
+        "pollution": "2",
+        "material": "IIIa"
+      },
+      "expected": {
+        "impulseKV": 2.065,
+        "clearanceMm": 1.5,
+        "creepageMm": 2.5,
+        "altitudeFactor": 1
+      },
+      "absoluteTolerance": {
+        "impulseKV": 0.0005,
+        "clearanceMm": 0.0005,
+        "creepageMm": 0.0005,
+        "altitudeFactor": 0.0005
+      },
+      "source": "Bundled img/iec60664-f2.png Case A 2.5kV PD2=1.5mm; img/iec60664-f5.png 250V PD2 III=2.5mm, 320V=3.2mm; img/iec60664-alt.png 2000m=1, 3000m=1.14, 4000m=1.29. Application impulse model ceil((2U+1000)*1.414), upward row selection."
+    },
+    {
+      "id": "iec-exact-table-boundaries",
+      "module": "iec60664",
+      "caseType": "boundary",
+      "inputs": {
+        "voltageV": 250,
+        "altitudeM": 3000,
+        "pollution": "2",
+        "material": "IIIa"
+      },
+      "expected": {
+        "impulseKV": 2.121,
+        "clearanceMm": 1.71,
+        "creepageMm": 2.5,
+        "altitudeFactor": 1.14
+      },
+      "absoluteTolerance": {
+        "impulseKV": 0.0005,
+        "clearanceMm": 0.0005,
+        "creepageMm": 0.0005,
+        "altitudeFactor": 0.0005
+      },
+      "source": "Bundled img/iec60664-f2.png Case A 2.5kV PD2=1.5mm; img/iec60664-f5.png 250V PD2 III=2.5mm, 320V=3.2mm; img/iec60664-alt.png 2000m=1, 3000m=1.14, 4000m=1.29. Application impulse model ceil((2U+1000)*1.414), upward row selection."
+    },
+    {
+      "id": "iec-above-table-boundaries",
+      "module": "iec60664",
+      "caseType": "boundary",
+      "inputs": {
+        "voltageV": 250.001,
+        "altitudeM": 3000.001,
+        "pollution": "2",
+        "material": "IIIa"
+      },
+      "expected": {
+        "impulseKV": 2.122,
+        "clearanceMm": 1.935,
+        "creepageMm": 3.2,
+        "altitudeFactor": 1.29
+      },
+      "absoluteTolerance": {
+        "impulseKV": 0.0005,
+        "clearanceMm": 0.0005,
+        "creepageMm": 0.0005,
+        "altitudeFactor": 0.0005
+      },
+      "source": "Bundled img/iec60664-f2.png Case A 2.5kV PD2=1.5mm; img/iec60664-f5.png 250V PD2 III=2.5mm, 320V=3.2mm; img/iec60664-alt.png 2000m=1, 3000m=1.14, 4000m=1.29. Application impulse model ceil((2U+1000)*1.414), upward row selection."
+    },
+    {
+      "id": "iec-negative-altitude",
+      "module": "iec60664",
+      "caseType": "invalid",
+      "inputs": {
+        "voltageV": 230,
+        "altitudeM": -1,
+        "pollution": "2",
+        "material": "IIIa"
+      },
+      "expected": {
+        "validationCategory": "error",
+        "messageFragment": "请填写有效的工作电压、海拔"
+      },
+      "absoluteTolerance": {},
+      "source": "IEC input domain: positive voltage and nonnegative altitude."
+    },
+    {
+      "id": "bolt-m8-loaded",
+      "module": "bolt",
+      "caseType": "nominal",
+      "inputs": {
+        "size": "M8",
+        "material": "10.9",
+        "quantity": 4,
+        "torque": 16,
+        "kMode": "dry",
+        "load": 4000,
+        "acceleration": 0,
+        "torqueTolerance": 0,
+        "conditionFactor": 1,
+        "vibrationFactor": 1,
+        "innerDiameter": 9,
+        "outerDiameter": 16,
+        "interfaceYield": 300
+      },
+      "expected": {
+        "maxTorqueNm": 16,
+        "preloadN": 10000,
+        "boltStressMpa": 300.546448087432,
+        "contactStressMpa": 80.032199954782,
+        "allowableTorqueNm": 41.2848
+      },
+      "absoluteTolerance": {
+        "maxTorqueNm": 0.0005,
+        "preloadN": 0.0005,
+        "boltStressMpa": 0.0005,
+        "contactStressMpa": 0.0005,
+        "allowableTorqueNm": 0.0005
+      },
+      "source": "Tmax=T*(1+tol); Fpre=Tmax/(K*d), K=0.2 dry; F=Fpre+load*(1+a/9.81)*condition*vibration/n; sigma=F/As; contact=F/[pi*(Do^2-Di^2)/4]; bundled M8 d=8mm As=36.6mm2, grade10.9 Rp=940MPa; T75=K*d*0.75*Rp*As."
+    },
+    {
+      "id": "bolt-zero-load-single-fastener",
+      "module": "bolt",
+      "caseType": "boundary",
+      "inputs": {
+        "size": "M8",
+        "material": "10.9",
+        "quantity": 1,
+        "torque": 16,
+        "kMode": "dry",
+        "load": 0,
+        "acceleration": 0,
+        "torqueTolerance": 0,
+        "conditionFactor": 1,
+        "vibrationFactor": 1,
+        "innerDiameter": 9,
+        "outerDiameter": 16,
+        "interfaceYield": 300
+      },
+      "expected": {
+        "maxTorqueNm": 16,
+        "preloadN": 10000,
+        "boltStressMpa": 273.224043715847,
+        "contactStressMpa": 72.756545413438,
+        "allowableTorqueNm": 41.2848
+      },
+      "absoluteTolerance": {
+        "maxTorqueNm": 0.0005,
+        "preloadN": 0.0005,
+        "boltStressMpa": 0.0005,
+        "contactStressMpa": 0.0005,
+        "allowableTorqueNm": 0.0005
+      },
+      "source": "At load=0, tolerance=0 and minimum n=1: F=16/(0.2*0.008)=10000N; stress=10000/36.6; contact=10000/(43.75*pi); T75=0.2*0.008*0.75*940*36.6."
+    },
+    {
+      "id": "bolt-zero-contact-area",
+      "module": "bolt",
+      "caseType": "invalid",
+      "inputs": {
+        "size": "M8",
+        "material": "10.9",
+        "quantity": 4,
+        "torque": 16,
+        "kMode": "dry",
+        "load": 4000,
+        "acceleration": 0,
+        "torqueTolerance": 0,
+        "conditionFactor": 1,
+        "vibrationFactor": 1,
+        "innerDiameter": 9,
+        "outerDiameter": 9,
+        "interfaceYield": 300
+      },
+      "expected": {
+        "validationCategory": "error",
+        "messageFragment": "参数不完整或超出有效范围"
+      },
+      "absoluteTolerance": {},
+      "source": "Contact annulus requires outer diameter strictly greater than inner diameter."
+    },
+    {
+      "id": "tolerance-two-equal-links",
+      "module": "tolerance",
+      "caseType": "nominal",
+      "inputs": {
+        "nominalsMm": [
+          10,
+          20
+        ],
+        "tolerancesMm": [
+          0.1,
+          0.1
+        ],
+        "signs": [
+          1,
+          1
+        ]
+      },
+      "expected": {
+        "nominalMm": 30,
+        "worstToleranceMm": 0.2,
+        "rssToleranceMm": 0.141421356237
+      },
+      "absoluteTolerance": {
+        "nominalMm": 0.00005,
+        "worstToleranceMm": 0.00005,
+        "rssToleranceMm": 0.00005
+      },
+      "source": "nominal=sum(sign*nominal); worst=sum(abs(t)); RSS=sqrt(sum(t^2)); UI fmtExact rounds to four decimals."
+    },
+    {
+      "id": "tolerance-zero-tolerances-subtract",
+      "module": "tolerance",
+      "caseType": "boundary",
+      "inputs": {
+        "nominalsMm": [
+          10,
+          20
+        ],
+        "tolerancesMm": [
+          0,
+          0
+        ],
+        "signs": [
+          1,
+          -1
+        ]
+      },
+      "expected": {
+        "nominalMm": -10,
+        "worstToleranceMm": 0,
+        "rssToleranceMm": 0
+      },
+      "absoluteTolerance": {
+        "nominalMm": 0.00005,
+        "worstToleranceMm": 0.00005,
+        "rssToleranceMm": 0.00005
+      },
+      "source": "Zero-tolerance boundary; nominal=10-20=-10; worst=RSS=0."
+    },
+    {
+      "id": "tolerance-no-valid-links",
+      "module": "tolerance",
+      "caseType": "invalid",
+      "inputs": {
+        "nominalsMm": [
+          ""
+        ],
+        "tolerancesMm": [
+          ""
+        ],
+        "signs": [
+          1
+        ]
+      },
+      "expected": {
+        "validationCategory": "warning",
+        "messageFragment": "请至少填写一个完整的尺寸环节"
+      },
+      "absoluteTolerance": {},
+      "source": "An empty chain has no valid nominal/tolerance pair."
+    }
+  ]
+}

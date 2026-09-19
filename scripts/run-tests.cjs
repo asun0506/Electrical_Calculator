@@ -11,6 +11,7 @@ const groups = Object.freeze({
     'tests/dvpr-browser.cjs',
     'tests/dvpr-internal-database.cjs',
     'tests/english-reports.cjs',
+    'tests/formula-regression.cjs',
     'tests/schematic-browser.cjs',
     'tests/schematic-layout.cjs',
     'tests/schematic-print-layout.cjs',
