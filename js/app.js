@@ -95,7 +95,7 @@
       if (detachDraft) detachDraft();
       detachDraft = flushDraft = null;
       activeId = id;
-      try { localStorage.setItem(ACTIVE_KEY, activeId); } catch (error) { /* 本地存储不可用时不影响计算 */ }
+      global.ElectricalStorage.writeText(ACTIVE_KEY, activeId);
       this.renderNav();
       this.renderContent();
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -292,8 +292,7 @@
   window.addEventListener('load', async () => {
     if (window.CalculatorDrafts) await window.CalculatorDrafts.ready;
     if (!registry.length) return;
-    let remembered = null;
-    try { remembered = localStorage.getItem(ACTIVE_KEY); } catch (error) { /* ignore */ }
+    const remembered = global.ElectricalStorage.readText(ACTIVE_KEY).value;
     const migratedId = remembered === 'rms-current' && toolkit.get('busbar-temp') ? 'busbar-temp' : remembered;
     toolkit.open(toolkit.get(migratedId) ? migratedId : registry[0].id);
   });

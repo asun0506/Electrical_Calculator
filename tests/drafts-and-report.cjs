@@ -38,8 +38,147 @@ async function roundTrip(id) {
   await page.waitForSelector('.draft-toolbar');
   assert.deepEqual(await values(), expected, `${id}: reload restores every field`);
 }
+async function storageCharacterization() {
+  await saved();
+  await page.evaluate(async () => {
+    localStorage.setItem('electrical_toolkit_active_calculator_v1', 'bolt');
+    localStorage.setItem('electrical_toolkit_draft_v1:bolt', JSON.stringify({
+      id: 'bolt', version: 1, updatedAt: 4000000000000,
+      payload: { form: [{ id: '', index: 0, value: '本地草稿兼容项目' }], model: null, tabs: [], details: [] },
+    }));
+    localStorage.setItem('matdb_override', JSON.stringify({ 'Al-1060-O': { E: 13579 } }));
+    localStorage.setItem('matdb_custom', JSON.stringify({ 'Storage custom': {
+      name: 'Storage custom', category: '金属', E: 24680, curve: [[0, 0], [1, 100]],
+    } }));
+    localStorage.setItem('electrical_toolkit_part_estimator_v1', JSON.stringify({
+      schemaVersion: 1, projectName: '兼容估价项目', parts: [{ id: 'stored-part',
+        basics: { partName: '兼容零件', transportFee: 321 }, materials: [], processes: [], packaging: [],
+      }],
+    }));
+    localStorage.setItem('electrical_toolkit_iec60664_verification_v1', JSON.stringify({
+      schemaVersion: 1, project: { name: '兼容绝缘项目', number: 'IEC-STORED' },
+      levels: [{ id: 'cell', voltage: 7.2, dimensions: [] }],
+    }));
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.open('electrical-toolkit-drafts', 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result;
+        const transaction = db.transaction('drafts', 'readwrite');
+        transaction.objectStore('drafts').put({ id: 'precharge', version: 1, updatedAt: 4000000000000,
+          payload: { form: [{ id: 'pc-v', index: 0, value: '654' }], model: null, tabs: [], details: [] } });
+        transaction.oncomplete = () => { db.close(); resolve(); };
+        transaction.onerror = () => reject(transaction.error);
+      };
+    });
+  });
+  await page.reload(); await page.waitForSelector('.draft-toolbar');
+  assert.equal(await page.evaluate(() => ElectricalToolkit.active().id), 'bolt', 'raw active key restores selected calculator');
+  assert.deepEqual(await page.evaluate(() => CalculatorDrafts.read('bolt').tabs), [], 'existing local draft representation restores');
+  assert.equal(await page.locator('[data-meta=projectName]').inputValue(), '本地草稿兼容项目', 'seeded local draft restores form');
+  assert.equal(await page.evaluate(() => CalculatorDrafts.read('precharge').form[0].value), '654', 'existing IndexedDB database/store restores');
+  await open('precharge');
+  assert.equal(await page.locator('#pc-v').inputValue(), '654', 'seeded IndexedDB draft restores form');
+  await open('materials');
+  await page.locator('#mt-name').selectOption('Al-1060-O');
+  await page.locator('#mt-query').click();
+  assert.equal(await page.locator('.mt-p[data-k=E]').inputValue(), '13579', 'material override key restores');
+  await page.locator('#mt-name').selectOption('Storage custom');
+  await page.locator('#mt-query').click();
+  assert.equal(await page.locator('.mt-p[data-k=E]').inputValue(), '24680', 'custom material key restores');
+  await open('part-estimator');
+  assert.equal(await page.locator('#pe-project-name').inputValue(), '兼容估价项目');
+  assert.equal(await page.locator('[data-basic=partName]').inputValue(), '兼容零件');
+  assert.equal(await page.locator('[data-basic=transportFee]').inputValue(), '321');
+  await open('iec60664');
+  assert.equal(await page.locator('[data-project=name]').inputValue(), '兼容绝缘项目');
+  assert.equal(await page.locator('[data-project=number]').inputValue(), 'IEC-STORED');
+  assert.equal(await page.evaluate(() => ElectricalToolkit.get('iec60664').captureDraft().levels[0].voltage), 7.2);
+  console.log('PASS seeded compatibility: active ID, local/IndexedDB drafts, material override/custom, estimator, IEC');
+}
+async function storageFailureBehavior(onlyIEC = false) {
+  const failurePage = await context.newPage();
+  const alerts = [];
+  failurePage.on('dialog', async dialog => { alerts.push(dialog.message()); await dialog.accept(); });
+  failurePage.on('pageerror', error => errors.push(error.message));
+  await failurePage.addInitScript(() => {
+    Storage.prototype.setItem = () => { throw new DOMException('QA full', 'QuotaExceededError'); };
+    IDBObjectStore.prototype.put = () => { throw new DOMException('QA full', 'QuotaExceededError'); };
+  });
+  await failurePage.goto(url);
+  await failurePage.waitForSelector('.draft-toolbar');
+  if (!onlyIEC) {
+    await failurePage.evaluate(() => ElectricalToolkit.open('relay-fuse'));
+    await failurePage.locator('#rf-pack-voltage').fill('567');
+    await failurePage.waitForFunction(() => document.querySelector('.draft-toolbar [role=status]')?.textContent.includes('浏览器保存失败'));
+    assert.equal(await failurePage.locator('#rf-pack-voltage').inputValue(), '567', 'both failed writes keep current values');
+    await failurePage.evaluate(() => { ElectricalToolkit.open('bolt'); ElectricalToolkit.open('relay-fuse'); });
+    assert.equal(await failurePage.locator('#rf-pack-voltage').inputValue(), '567', 'failed writes keep session draft');
+    await failurePage.evaluate(() => ElectricalToolkit.open('materials'));
+    await failurePage.locator('#mt-edit').click();
+    await failurePage.locator('.mt-p[data-k=E]').fill('98765');
+    alerts.length = 0;
+    await failurePage.locator('#mt-save').click();
+    assert.ok(alerts.some(text => /导出.*备份/.test(text)), 'material failure offers export backup');
+    assert.equal(await failurePage.locator('.mt-p[data-k=E]').inputValue(), '98765');
+    await failurePage.evaluate(() => ElectricalToolkit.open('part-estimator'));
+    await failurePage.locator('#pe-project-name').fill('保存失败仍保留');
+    assert.match(await failurePage.locator('.pe-notice').textContent(), /保存失败.*导出.*备份/, 'estimator input failure immediately offers backup');
+    assert.equal(await failurePage.locator('#pe-project-name').inputValue(), '保存失败仍保留');
+    await failurePage.locator('[data-action=add-part]').click();
+    assert.match(await failurePage.locator('.pe-notice').textContent(), /保存失败.*导出.*备份/);
+    assert.doesNotMatch(await failurePage.locator('.pe-notice').textContent(), /数据自动保存在当前浏览器/, 'failed save must not also claim persistence');
+  }
+  await failurePage.evaluate(() => { ElectricalToolkit.open('iec60664'); delete window.CalculatorDrafts; });
+  alerts.length = 0;
+  await failurePage.locator('[data-project=name]').fill('IEC 保存失败仍保留');
+  await failurePage.waitForTimeout(250);
+  assert.ok(alerts.some(text => /导出.*备份/.test(text)), 'IEC standalone save failure offers export backup');
+  assert.equal(await failurePage.locator('[data-project=name]').inputValue(), 'IEC 保存失败仍保留');
+  await failurePage.close();
+  console.log('PASS failed localStorage/IndexedDB writes preserve forms and actionable backup messages');
+}
+async function objectStoreContract() {
+  const result = await page.evaluate(async () => {
+    const store = ElectricalStorage.openObjectStore({ database: 'electrical-storage-qa', version: 1, store: 'records', keyPath: 'id' });
+    const ready = await store.ready;
+    const put = await store.put({ id: 'sample', payload: { value: 42 } });
+    const rows = await store.getAll();
+    const invalid = await store.put({ missingKey: true });
+    const remove = await store.remove('sample');
+    const empty = await store.getAll();
+    const original = IDBObjectStore.prototype.put;
+    IDBObjectStore.prototype.put = function (value) {
+      const request = original.call(this, value);
+      this.transaction.abort();
+      return request;
+    };
+    const aborted = await store.put({ id: 'aborted' });
+    IDBObjectStore.prototype.put = original;
+    const afterAbort = await store.getAll();
+    return { ready, put, rows, invalid, remove, empty, aborted, afterAbort };
+  });
+  assert.equal(result.ready.ok, true);
+  assert.equal(result.put.ok, true);
+  assert.deepEqual(result.rows.value, [{ id: 'sample', payload: { value: 42 } }]);
+  assert.equal(result.invalid.ok, false, 'missing key does not escape result contract');
+  assert.equal(result.remove.ok, true);
+  assert.deepEqual(result.empty.value, []);
+  assert.equal(result.aborted.ok, false, 'transaction abort cannot report successful persistence');
+  assert.deepEqual(result.afterAbort.value, []);
+  console.log('PASS IndexedDB facade round trip, remove, invalid value, aborted transaction');
+}
 (async () => {
   await start();
+  await storageCharacterization();
+  if (process.argv.includes('--storage-characterization')) { await context.close(); return; }
+  if (process.argv.includes('--storage-object-store')) { await objectStoreContract(); await context.close(); return; }
+  if (process.argv.includes('--storage-failures') || process.argv.includes('--storage-failure-iec')) {
+    await storageFailureBehavior(process.argv.includes('--storage-failure-iec'));
+    await context.close(); return;
+  }
+  await storageFailureBehavior();
+  await objectStoreContract();
   for (const id of ['conductor', 'relay-fuse', 'iec60664', 'sor-generator']) {
     await open(id);
     await require('./import-safety-helpers.cjs').assertRejectedImport(page, id);

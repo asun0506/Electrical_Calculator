@@ -13,6 +13,7 @@
   let project = loadProject();
   let activeId = project.parts[0].id;
   let notice = '估价项目已就绪';
+  let saveFailed = false;
   let dragRowId = null;
 
   T.register({
@@ -98,15 +99,19 @@
   }
 
   function loadProject() {
-    try {
-      const value = JSON.parse(localStorage.getItem(STORAGE_KEY));
-      return validProject(value) ? normalizeProject(value) : newProject();
-    } catch (error) { return newProject(); }
+    const result = window.ElectricalStorage.readJson(STORAGE_KEY, { validate: validProject });
+    return result.ok && result.value ? normalizeProject(result.value) : newProject();
   }
 
   function saveProject() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(project)); }
-    catch (error) { notice = '本地保存失败，请导出JSON备份项目'; }
+    const result = window.ElectricalStorage.writeJson(STORAGE_KEY, project);
+    saveFailed = !result.ok;
+    if (!result.ok) {
+      notice = '本地保存失败，请导出JSON备份项目';
+      const status = root?.querySelector('.pe-notice');
+      if (status) status.textContent = notice;
+    }
+    return result.ok;
   }
 
   function activePart() {
@@ -175,7 +180,7 @@
           const itemTotal = totals(item);
           return `<button class="pe-part-tab${item.id === part.id ? ' active' : ''}" data-open-part="${esc(item.id)}"><span>${String(index + 1).padStart(2, '0')}</span><b>${esc(item.basics.partName || '未命名零件')}</b><em>${esc(item.basics.partNo || '未填写零件号')}</em><strong>${money(itemTotal.price)}</strong></button>`;
         }).join('')}</div>
-        <div class="pe-notice">${esc(notice)} · 数据自动保存在当前浏览器</div>
+        <div class="pe-notice">${esc(notice)}${saveFailed ? '' : ' · 数据自动保存在当前浏览器'}</div>
       </div>
 
       <div class="pe-layout">

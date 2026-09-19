@@ -36,10 +36,13 @@
     { k: 'Ed', label: '介电强度 Ed', unit: 'kV/mm' },
   ];
 
-  function load(key) { try { return JSON.parse(localStorage.getItem(key)) || {}; } catch (e) { return {}; } }
+  function load(key) {
+    return window.ElectricalStorage.readJson(key, { defaultValue: {}, validate: window.ElectricalSafety.isPlainObject }).value;
+  }
   function save(key, val) {
-    try { localStorage.setItem(key, JSON.stringify(val)); return true; }
-    catch (error) { alert('浏览器本地存储失败。请检查隐私模式或存储空间，并先导出数据备份。'); return false; }
+    const result = window.ElectricalStorage.writeJson(key, val);
+    if (!result.ok) alert('浏览器本地存储失败。请检查隐私模式或存储空间，并先导出数据备份。');
+    return result.ok;
   }
   const overrides = load(LS_OVERRIDE);
   const customs = load(LS_CUSTOM);

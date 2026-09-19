@@ -2,31 +2,20 @@
 (function () {
   'use strict';
   const PREFIX = 'electrical_toolkit_draft_v1:';
+  const storage = window.ElectricalStorage;
   const cache = new Map();
-  let db = null;
+  const validRecord = record => record && typeof record.id === 'string' && record.version === 1 && record.payload;
   function newer(record) {
-    if (record && typeof record.id === 'string' && record.version === 1 && record.payload
+    if (validRecord(record)
       && (!cache.has(record.id) || record.updatedAt > cache.get(record.id).updatedAt)) cache.set(record.id, record);
   }
-  try {
-    for (let i = 0; i < localStorage.length; i += 1) {
-      const key = localStorage.key(i);
-      if (key.startsWith(PREFIX)) { try { newer(JSON.parse(localStorage.getItem(key))); } catch (_) { /* Ignore a damaged recovery copy. */ } }
-    }
-  } catch (_) { /* Storage availability is reported when writing. */ }
-
-  const ready = new Promise((resolve) => {
-    try {
-      const request = indexedDB.open('electrical-toolkit-drafts', 1);
-      request.onupgradeneeded = () => request.result.createObjectStore('drafts', { keyPath: 'id' });
-      request.onerror = request.onblocked = () => resolve();
-      request.onsuccess = () => {
-        db = request.result;
-        const read = db.transaction('drafts').objectStore('drafts').getAll();
-        read.onsuccess = () => { read.result.forEach(newer); resolve(); };
-        read.onerror = () => resolve();
-      };
-    } catch (_) { resolve(); }
+  storage.keys(PREFIX).value.forEach(key => {
+    const result = storage.readJson(key, { validate: validRecord });
+    if (result.ok) newer(result.value);
+  });
+  const store = storage.openObjectStore({ database: 'electrical-toolkit-drafts', version: 1, store: 'drafts', keyPath: 'id' });
+  const ready = store.getAll().then(result => {
+    if (result.ok) result.value.forEach(newer);
   });
 
   function write(id, payload) {
@@ -34,17 +23,8 @@
     // Detach from live module state before an asynchronous IndexedDB write.
     const serialized = JSON.stringify(record);
     cache.set(id, JSON.parse(serialized));
-    let synchronous = false;
-    try { localStorage.setItem(PREFIX + id, serialized); synchronous = true; } catch (_) { /* Large attachments use IndexedDB. */ }
-    if (!db) return Promise.resolve(synchronous);
-    return new Promise((resolve) => {
-      try {
-        const transaction = db.transaction('drafts', 'readwrite');
-        transaction.objectStore('drafts').put(cache.get(id));
-        transaction.oncomplete = () => resolve(true);
-        transaction.onerror = transaction.onabort = () => resolve(synchronous);
-      } catch (_) { resolve(synchronous); }
-    });
+    const synchronous = storage.writeJson(PREFIX + id, cache.get(id)).ok;
+    return store.put(cache.get(id)).then(result => result.ok || synchronous);
   }
 
   const controls = (host) => Array.from(host.querySelectorAll('input:not([type=file]):not([type=password]),select,textarea'));

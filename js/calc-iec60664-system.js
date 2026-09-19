@@ -95,35 +95,22 @@
   }
 
   function loadState() {
-    try {
-      return normalize(JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null'));
-    } catch (error) {
-      return defaultState();
-    }
+    const result = window.ElectricalStorage.readJson(STORAGE_KEY, { validate: window.ElectricalSafety.isPlainObject });
+    return normalize(result.value);
   }
 
   function saveState() {
     clearTimeout(saveTimer);
     if (window.CalculatorDrafts) return; // Unified observer stores the full project (including images) in IndexedDB.
-    saveTimer = setTimeout(() => {
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      } catch (error) {
-        alert('保存失败：截图可能过大，已超出浏览器本地存储容量。请删除部分截图后重试。');
-      }
-    }, 120);
+    saveTimer = setTimeout(persistNow, 120);
   }
 
   function persistNow() {
     clearTimeout(saveTimer);
     if (window.CalculatorDrafts) return true;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      return true;
-    } catch (error) {
-      alert('保存失败：截图可能过大，已超出浏览器本地存储容量。请删除部分截图后重试。');
-      return false;
-    }
+    const result = window.ElectricalStorage.writeJson(STORAGE_KEY, state);
+    if (!result.ok) alert('浏览器保存失败，请立即导出 JSON 备份；检查存储空间或减少截图后重试。');
+    return result.ok;
   }
 
   function n(value) {
@@ -511,7 +498,7 @@
       if (!confirm('确定清空当前校核吗？三级系统参数、所有关键尺寸、尺寸链和已上传图片都将被删除，此操作无法撤销。建议先导出 JSON 备份。')) return;
       clearTimeout(saveTimer);
       state = defaultState();
-      try { localStorage.removeItem(STORAGE_KEY); } catch (error) { /* ignore */ }
+      window.ElectricalStorage.remove(STORAGE_KEY);
       persistNow();
     }
     else if (action === 'export-pdf-en') return exportPdf('en');

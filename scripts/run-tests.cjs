@@ -20,6 +20,7 @@ const groups = Object.freeze({
   ],
   unit: [
     'tests/safety.cjs',
+    'tests/storage.cjs',
     'tests/busbar-merged.cjs',
     'tests/dfmea.cjs',
     'tests/standards-data.cjs',
