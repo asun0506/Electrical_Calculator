@@ -74,8 +74,22 @@ let browser;
   assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().meta.legendLabels.lv), '低压信号线（自定义）');
   if (process.env.SCHEMATIC_LEGEND_SCREENSHOT) await page.screenshot({ path: process.env.SCHEMATIC_LEGEND_SCREENSHOT, fullPage: true });
 
-  const saved = await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft());
-  await page.evaluate(value => ElectricalToolkit.get('schematic').restoreDraft(value), saved);
+  await page.keyboard.press('Escape');
+  await page.locator('[data-legend-type="lv"] text').click();
+  await legendInspector.waitFor();
+
+  const jsonDownload = page.waitForEvent('download');
+  await page.locator('#schExportJson').click();
+  const jsonPath = path.join(root, 'schematic-legend-roundtrip-test.json');
+  await (await jsonDownload).saveAs(jsonPath);
+  const exported = fs.readFileSync(jsonPath);
+  fs.unlinkSync(jsonPath);
+  await page.evaluate(() => {
+    const draft = ElectricalToolkit.get('schematic').captureDraft();
+    delete draft.meta.legendLabels;
+    ElectricalToolkit.get('schematic').restoreDraft(draft);
+  });
+  await page.locator('#schImport').setInputFiles({ name: 'schematic-legend-roundtrip-test.json', mimeType: 'application/json', buffer: exported });
   assert.match(await page.locator('.sch-legend').textContent(), /低压信号线（自定义）/);
 
   console.log('PASS schematic canvas wire editor, optional gauge and editable legend');
