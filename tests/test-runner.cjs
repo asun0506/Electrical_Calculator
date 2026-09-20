@@ -13,6 +13,7 @@ assert.deepEqual(runner.groups.unit, [
   'tests/standards-data.cjs',
 ]);
 assert.ok(runner.groups.browser.includes('tests/schematic-browser.cjs'));
+assert.ok(runner.groups.browser.includes('tests/schematic-wire-editor.cjs'));
 assert.ok(runner.groups.browser.includes('tests/dfmea-browser.cjs'));
 const syntax = runner.collectSyntaxFiles(path.resolve(__dirname, '..'));
 assert.ok(syntax.some((file) => file.endsWith(path.join('js', 'app.js'))));

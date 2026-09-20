@@ -33,10 +33,9 @@ let browser;
   const headerWidths = await page.locator('.sch-wires thead th').evaluateAll(headers =>
     headers.map(header => Math.round(header.getBoundingClientRect().width))
   );
-  assert.ok(headerWidths[1] <= 300, `source column should be compact, got ${headerWidths[1]}px`);
-  assert.ok(headerWidths[2] <= 440, `target column should be compact, got ${headerWidths[2]}px`);
-  assert.ok(headerWidths[3] >= 145, `wire type column should be wider, got ${headerWidths[3]}px`);
-  assert.ok(headerWidths[4] >= 155, `wire gauge column should be wider, got ${headerWidths[4]}px`);
+  assert.ok(headerWidths[1] >= 380, `source column should receive reclaimed property space, got ${headerWidths[1]}px`);
+  assert.ok(headerWidths[2] >= 550, `target column should receive reclaimed property space, got ${headerWidths[2]}px`);
+  assert.ok(headerWidths.slice(3, 7).reduce((sum, width) => sum + width, 0) <= 420, `property columns should be about 40% narrower, got ${headerWidths.slice(3, 7).join(' + ')}px`);
 
   await page.evaluate(() => ElectricalToolkit.get('schematic').restoreDraft({
     meta: { title: 'layout-overflow' },
@@ -48,17 +47,18 @@ let browser;
     revisions: []
   }));
   await page.locator('[data-wire-id="wire"] [data-add-junction-target="wire-target"]').click();
-  const branchLayout = await page.locator('.sch-connection-subrow-branch').evaluate(row => {
-    const properties = row.querySelector('.sch-branch-properties');
+  const branchLayout = await page.locator('.sch-wire-branch-row').evaluate(row => {
+    const properties = [...row.children].slice(3, 7);
     return {
       rowClientWidth: row.clientWidth,
       rowScrollWidth: row.scrollWidth,
-      propertiesRight: properties.getBoundingClientRect().right,
-      rowRight: row.getBoundingClientRect().right
+      propertiesTop: properties.map(cell => Math.round(cell.getBoundingClientRect().top)),
+      sourceTop: Math.round(row.children[1].getBoundingClientRect().top),
     };
   });
   assert.ok(branchLayout.rowScrollWidth <= branchLayout.rowClientWidth + 1, `branch row overflowed by ${branchLayout.rowScrollWidth - branchLayout.rowClientWidth}px`);
-  assert.ok(branchLayout.propertiesRight <= branchLayout.rowRight + 1, 'branch properties must remain inside the grouped wire row');
+  assert.ok(branchLayout.propertiesTop.every(top => Math.abs(top - branchLayout.sourceTop) <= 1), 'branch properties must sit to the right on the same row as branch endpoints');
+  if (process.env.SCHEMATIC_WIRE_TABLE_SCREENSHOT) await page.locator('.sch-wire-scroll').screenshot({ path: process.env.SCHEMATIC_WIRE_TABLE_SCREENSHOT });
 
   console.log('schematic responsive layout tests passed');
 })().catch(error => {

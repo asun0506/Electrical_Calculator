@@ -124,4 +124,6 @@ const moved = routing.moveAttachedRoutes(freeze(snapshots), 20, 30, drawing.comp
 assert.equal(moved[0].waypoints[0].x, snapshots[0].points[0].x + 20);
 assert.equal(moved[0].waypoints[0].y, snapshots[0].points[0].y + 30);
 assert.equal(routing.labelPlacement(drawing, freeze(branches)).filter(branch => branch.label).length, 6);
+assert.equal(routing.wireText({ net: 'SIG', gauge: '', function: 'Sense' }), 'SIG · Sense', 'an omitted gauge must not render a missing-gauge warning');
+
 console.log('PASS schematic pure model, geometry and routing characterization');
