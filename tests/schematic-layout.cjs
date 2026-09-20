@@ -13,11 +13,13 @@ let browser;
     args: ['--allow-file-access-from-files']
   });
   const page = await browser.newPage({ viewport: { width: 1366, height: 900 } });
+  await page.context().setOffline(true);
   await page.goto(pathToFileURL(path.join(root, 'index.html')).href);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await page.evaluate(() => ElectricalToolkit.open('schematic'));
   await page.waitForSelector('#schDiagram');
+  assert.deepEqual(await page.evaluate(() => Object.keys(ElectricalSchematic)), ['model', 'geometry', 'routing'], 'classic script namespaces load in dependency order through file:// while offline');
 
   const overflowingEditors = await page.locator('#schEntities .sch-component-editor').evaluateAll(cards =>
     cards.filter(card => card.scrollWidth > card.clientWidth + 1).map(card => ({

@@ -4,10 +4,19 @@ const path=require('node:path');
 const {pathToFileURL}=require('node:url');
 const {chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
 const root=path.resolve(__dirname,'..');let browser;
+// Captured from the actual default JSON download at baseline 6dd133e.
+async function assertDefaultExport(page){
+  const downloaded=page.waitForEvent('download');await page.locator('#schExportJson').click();
+  const stream=await(await downloaded).createReadStream();let text='';for await(const chunk of stream)text+=chunk;
+  const normalized=JSON.stringify(JSON.parse(text),(key,value)=>key==='exportedAt'?undefined:typeof value==='string'?value.replace(/\b(?:pin|cmp|conn|dev|target|wire)_\d+_\d+\b/g,'generated-id'):value);
+  assert.equal(require('node:crypto').createHash('sha256').update(normalized).digest('hex'),'66c3f8dbb675665e5434ba3d3a4d0fa3bcc399a497fecf9e9dbf22cd11cdd246','default normalized JSON export must match the pre-extraction drawing');
+}
 (async()=>{
   browser=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',headless:true,args:['--allow-file-access-from-files']});
   const page=await browser.newPage({viewport:{width:1700,height:1100},acceptDownloads:true});const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+  await page.clock.setFixedTime(new Date('2026-09-18T12:00:00Z'));
   await page.goto(pathToFileURL(path.join(root,'index.html')).href);await page.evaluate(()=>localStorage.clear());await page.reload();await page.evaluate(()=>ElectricalToolkit.open('schematic'));
+  await assertDefaultExport(page);
   await require('./import-safety-helpers.cjs').assertRejectedImport(page, 'schematic');
   await page.waitForSelector('#schDiagram');assert.equal(await page.locator('.sch-component-editor').count(),4);assert.equal(await page.locator('.sch-wires tbody tr').count(),6);assert.equal(await page.locator('.sch-wire-label').count(),6);assert.ok(await page.locator('.sch-palette-item').count()>=20);assert.equal(await page.locator('.sch-wires').evaluate(el=>getComputedStyle(el).borderSpacing),'0px 5px');assert.equal(await page.locator('.sch-wires tbody tr').first().locator('td').first().evaluate(el=>getComputedStyle(el).borderLeftWidth),'4px');assert.equal(await page.locator('.sch-edit-grid').count(),1);assert.equal(await page.locator('#schToggleGrid').evaluate(el=>el.classList.contains('active')),true);assert.equal(await page.locator('#schToggleSnap').evaluate(el=>el.classList.contains('active')),true);await page.locator('#schToggleGrid').click();assert.equal(await page.locator('.sch-edit-grid').count(),0);await page.locator('#schToggleGrid').click();assert.equal(await page.locator('.sch-edit-grid').count(),1);if(process.env.SCHEMATIC_SCREENSHOT)await page.locator('#schCanvasPanel').screenshot({path:process.env.SCHEMATIC_SCREENSHOT});
   assert.equal(await page.locator('[data-palette-type="relay"] span').textContent(),'Relay');const legendBefore=await page.locator('.sch-legend-hit').evaluate(el=>({x:Number(el.getAttribute('x'))+8,y:Number(el.getAttribute('y'))+18}));assert.ok(legendBefore.x>700,'legend defaults to the right half of A3');await page.locator('.sch-legend-hit').evaluate(el=>{const r=el.getBoundingClientRect(),x=r.left+20,y=r.top+20;el.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,clientX:x,clientY:y}));document.dispatchEvent(new PointerEvent('pointermove',{bubbles:true,clientX:x-80,clientY:y-30}));document.dispatchEvent(new PointerEvent('pointerup',{bubbles:true,clientX:x-80,clientY:y-30}));});const movedLegend=await page.evaluate(()=>ElectricalToolkit.get('schematic').captureDraft().meta);assert.equal(movedLegend.legendMoved,true);assert.ok(movedLegend.legendX<legendBefore.x);assert.ok(movedLegend.legendY<legendBefore.y);
