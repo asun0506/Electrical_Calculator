@@ -21,7 +21,28 @@
   function branchMidpoint(state,branch){let best={length:-1,segmentIndex:0,x:branch.route[0]?.x||100,y:branch.route[0]?.y||100};for(let i=0;i<branch.route.length-1;i++){const a=branch.route[i],b=branch.route[i+1],length=Math.abs(b.x-a.x)+Math.abs(b.y-a.y);if(length>best.length)best={length,segmentIndex:i,x:snapCoordinate(state,(a.x+b.x)/2),y:snapCoordinate(state,(a.y+b.y)/2)};}return best;}
   function manualRoute(state,a,b,sa,sb,waypoints){const points=[{x:a.x,y:a.y}],controls=waypoints.map(p=>({...p})),append=raw=>{const free=raw.free===true,q={...raw,x:snapCoordinate(state,raw.x,free),y:snapCoordinate(state,raw.y,free)},last=points[points.length-1];if(last.x!==q.x&&last.y!==q.y)points.push({x:q.x,y:last.y});points.push(q);};if(controls.length){controls[0]=keepOutside(controls[0],a);controls[controls.length-1]=keepOutside(controls[controls.length-1],b);}if(!a.junction)points.push(sa);controls.forEach(append);if(!b.junction)append(sb);points.push({x:b.x,y:b.y});return simplify(points);}
   function routePoints(state,a,b,rank,count,branchIndex,channelAdjust=0,waypoints=[]){const {w:cw,h:ch}=canvasDimensions(state),gap=30,channel=rank+channelAdjust,lane=(channel-(count-1)/2)*gap,depth=rank+Math.abs(channelAdjust),escape=40+depth*20+branchIndex*10,sa=outward(state,a,escape),sb=outward(state,b,40+depth*20),aHorizontal=a.side==='left'||a.side==='right',bHorizontal=b.side==='left'||b.side==='right';if(waypoints.length)return manualRoute(state,a,b,sa,sb,waypoints);let middle;if(aHorizontal&&bHorizontal){const x=snapClamp(state,(sa.x+sb.x)/2+lane,20,cw-20);middle=[{x,y:sa.y},{x,y:sb.y}];}else if(!aHorizontal&&!bHorizontal){const y=snapClamp(state,(sa.y+sb.y)/2+lane,50,ch-90);middle=[{x:sa.x,y},{x:sb.x,y}];}else if(aHorizontal){const dir=a.side==='right'?1:-1,x=snapClamp(state,sa.x+dir*(40+depth*gap),20,cw-20);middle=[{x,y:sa.y},{x,y:sb.y},{x:sb.x,y:sb.y}];}else{const dir=a.side==='bottom'?1:-1,y=snapClamp(state,sa.y+dir*(40+depth*gap),50,ch-90);middle=[{x:sa.x,y},{x:sb.x,y},{x:sb.x,y:sb.y}];}return simplify([{x:a.x,y:a.y},sa,...middle,sb,{x:b.x,y:b.y}]);}
-  function assignLabelBoxes(state,items){const {w:cw,h:ch}=canvasDimensions(state),placed=[],seen=new Set;items.forEach(item=>{delete item.label;if(seen.has(item.wire.id))return;seen.add(item.wire.id);const text=wireText(item.wire),width=clamp(Array.from(text).reduce((n,ch)=>n+(/[\u0100-\uffff]/.test(ch)?7.5:4.9),4),24,300),height=12,anchor=startLabelPoint(item.route,width,height);let box;if(anchor.vertical){const baseY=clamp(anchor.y,8,ch-height-105),x=clamp(anchor.x,8,cw-width-8);box={x,y:baseY,w:width,h:height};for(const shift of [18,-18,36,-36,54,-54]){if(!placed.some(other=>overlaps(box,other,2)))break;box={x,y:clamp(baseY+shift,8,ch-height-105),w:width,h:height};}}else{const minX=clamp(Math.min(anchor.minX,anchor.maxX),8,cw-width-8),maxX=clamp(Math.max(anchor.minX,anchor.maxX),8,cw-width-8),baseX=clamp(anchor.x,minX,maxX),y=clamp(anchor.y,8,ch-105);box={x:baseX,y,w:width,h:height};for(const shift of [30,-30,60,-60,90,-90,120,-120]){if(!placed.some(other=>overlaps(box,other,2)))break;box={x:clamp(baseX+shift,minX,maxX),y,w:width,h:height};}}item.label={...box,text,lineY:anchor.lineY,vertical:anchor.vertical};placed.push(box);});}
+  function assignLabelBoxes(state,items){
+    const {w:cw,h:ch}=canvasDimensions(state),placed=[],seen=new Set;
+    const place=(route,text,atEnd=false)=>{
+      const width=clamp(Array.from(text).reduce((n,ch)=>n+(/[\u0100-\uffff]/.test(ch)?7.5:4.9),4),24,300),height=12,ordered=atEnd?[...route].reverse():route;
+      let anchor=startLabelPoint(ordered,width,height);
+      if(atEnd&&anchor.vertical){const a=ordered[0],b=ordered.find(p=>p.x!==a.x||p.y!==a.y);if(b)anchor={...anchor,y:b.y>=a.y?a.y+7:a.y-height-7,lineY:a.y};}
+      let box;
+      if(anchor.vertical){const baseY=clamp(anchor.y,8,ch-height-105),x=clamp(anchor.x,8,cw-width-8);box={x,y:baseY,w:width,h:height};for(const shift of [18,-18,36,-36,54,-54]){if(!placed.some(other=>overlaps(box,other,2)))break;box={x,y:clamp(baseY+shift,8,ch-height-105),w:width,h:height};}}
+      else{const minX=clamp(Math.min(anchor.minX,anchor.maxX),8,cw-width-8),maxX=clamp(Math.max(anchor.minX,anchor.maxX),8,cw-width-8),baseX=clamp(anchor.x,minX,maxX),y=clamp(anchor.y,8,ch-105);box={x:baseX,y,w:width,h:height};for(const shift of [30,-30,60,-60,90,-90,120,-120]){if(!placed.some(other=>overlaps(box,other,2)))break;box={x:clamp(baseX+shift,minX,maxX),y,w:width,h:height};}}
+      placed.push(box);return{...box,text,lineY:anchor.lineY,vertical:anchor.vertical};
+    };
+    items.forEach(item=>{
+      delete item.label;delete item.endGaugeLabel;
+      const wire=item.wire,mode=wire.gaugeLabelPosition||'start';
+      if(!seen.has(wire.id)){
+        seen.add(wire.id);
+        const text=mode==='end'?[wire.net,wire.function].filter(value=>String(value||'').trim()).join(' · '):wireText(wire);
+        if(text)item.label=place(item.route,text);
+      }
+      if((mode==='end'||mode==='both')&&String(wire.gauge||'').trim())item.endGaugeLabel=place(item.route,String(wire.gauge),true);
+    });
+  }
   function branches(state,pos){
     const raw=[];state.connections.forEach(w=>w.targets.forEach((t,ti)=>{const a=pos[w.from],b=pos[t.to],pairA=w.type==='can'?pos[w.pairFrom]:null,pairB=w.type==='can'?pos[t.pairTo]:null;if(a&&b&&(w.type!=='can'||pairA&&pairB))raw.push({id:`${w.id}:${t.id}`,wire:w,target:t,targetIndex:ti,a,b,pairA,pairB,group:`${a.side}:${b.side}`});}));
     const counts={};raw.forEach(r=>counts[r.group]=(counts[r.group]||0)+1);const ranks={},out=[];
@@ -42,7 +63,7 @@
     state=clone(state);
     const uid=context.id,target=(...args)=>M.createTarget(context,...args),junctionNode=(...args)=>M.createJunction({...context,meta:state.meta},...args);
     const w=state.connections.find(item=>item.id===branch.wire.id),t=w?.targets.find(item=>item.id===branch.target.id);if(!w||!t||!point)return false;const segmentIndex=clamp(Number(point.segmentIndex)||0,0,Math.max(0,branch.route.length-2)),junction=junctionNode(point.x,point.y,w.type==='can'),pins=junction.connectors[0].pins,junctionFrom=`pin:${pins[0].id}`,junctionPair=pins[1]?`pin:${pins[1].id}`:'',route=branch.route.map(p=>({...p}));route.splice(segmentIndex+1,0,{x:junction.x,y:junction.y,junctionId:junction.id});t.waypoints=route.slice(1,-1).map(p=>({...p}));
-    const nextTarget=target('');if(w.type==='can')nextTarget.pairTo='';const nextWire={id:uid('wire'),from:junctionFrom,targets:[nextTarget],type:w.type,gauge:w.gauge||'',net:w.net||'',function:w.function||'',parentWireId:w.id,parentTargetId:t.id,parentJunctionId:junction.id};if(w.type==='can')nextWire.pairFrom=junctionPair;
+    const nextTarget=target('');if(w.type==='can')nextTarget.pairTo='';const nextWire={id:uid('wire'),from:junctionFrom,targets:[nextTarget],type:w.type,gauge:w.gauge||'',net:w.net||'',function:w.function||'',parentWireId:w.id,parentTargetId:t.id,parentJunctionId:junction.id};if(w.gaugeLabelPosition)nextWire.gaugeLabelPosition=w.gaugeLabelPosition;if(w.type==='can')nextWire.pairFrom=junctionPair;
     state.components.push(junction);const at=state.connections.indexOf(w);state.connections.splice(at<0?state.connections.length:at+1,0,nextWire);return {state,junctionId:junction.id};
   }
   function ownsEndpoint(state,c,key){if(!key)return false;const owner=state.components.find(item=>item.connectors.filter(connectorIsPlaced).some(k=>k.pins.some(p=>key===`pin:${p.id}`))||item.devices.some(d=>d.ports.some((_,i)=>key===`device:${d.id}:${i}`)));return owner?.id===c.id;}

@@ -49,6 +49,15 @@ let browser;
   assert.deepEqual((await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().connections[0].targets[0].waypoints)), [], 'opening the inspector must not freeze an automatic route into explicit waypoints');
   await inspector.locator('[data-inspector-wire-field="gauge"]').fill('0.75 mm²');
   await inspector.locator('[data-inspector-wire-field="net"]').fill('NET_A');
+  const gaugePosition = inspector.locator('[data-inspector-gauge-position]');
+  assert.equal(await gaugePosition.inputValue(), 'start', 'legacy wire defaults to its current start label');
+  await gaugePosition.selectOption('end');
+  assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().connections[0].gaugeLabelPosition), 'end');
+  assert.doesNotMatch(await page.locator('[data-wire-label="wire:wire-target"][data-label-position="start"]').textContent(), /0\.75 mm²/);
+  assert.equal(await page.locator('[data-wire-label="wire:wire-target"][data-label-position="end"]').textContent(), '0.75 mm²');
+  await gaugePosition.selectOption('both');
+  assert.match(await page.locator('[data-wire-label="wire:wire-target"][data-label-position="start"]').textContent(), /0\.75 mm²/);
+  assert.equal(await page.locator('[data-wire-label="wire:wire-target"][data-label-position="end"]').textContent(), '0.75 mm²');
   assert.equal(await gauge.inputValue(), '0.75 mm²');
   assert.equal(await page.locator('.sch-wires tr[data-wire-id="wire"] [data-wire-field="net"]').inputValue(), 'NET_A');
   await page.locator('.sch-wires tr[data-wire-id="wire"] [data-wire-field="function"]').fill('Updated in workspace');
@@ -58,6 +67,14 @@ let browser;
   await page.keyboard.press('Escape');
   assert.equal(await inspector.count(), 0);
 
+  const positionedSvgDownload = page.waitForEvent('download');
+  await page.locator('#schExportSvg').click();
+  const positionedSvgPath = path.join(root, 'schematic-gauge-position-test.svg');
+  await (await positionedSvgDownload).saveAs(positionedSvgPath);
+  const positionedSvg = fs.readFileSync(positionedSvgPath, 'utf8');
+  fs.unlinkSync(positionedSvgPath);
+  assert.equal((positionedSvg.match(/data-label-position="end"/g) || []).length, 1, 'SVG export retains the destination gauge');
+
   await gauge.fill('');
   const svgDownload = page.waitForEvent('download');
   await page.locator('#schExportSvg').click();
@@ -66,6 +83,7 @@ let browser;
   const svgText = fs.readFileSync(svgPath, 'utf8');
   fs.unlinkSync(svgPath);
   assert.doesNotMatch(svgText, /线径未填写/);
+  assert.doesNotMatch(svgText, /data-label-position="end"/, 'empty gauge has no destination marker in export');
 
   await page.locator('.sch-legend-hit').click();
   const legendInspector = page.locator('[data-legend-inspector]');
@@ -102,6 +120,7 @@ let browser;
   await page.locator('#schImport').setInputFiles({ name: 'schematic-legend-roundtrip-test.json', mimeType: 'application/json', buffer: exported });
   assert.match(await page.locator('.sch-legend').textContent(), /低压信号线（自定义）/);
   assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().meta.legendNote), 'A&B <test>');
+  assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().connections[0].gaugeLabelPosition), 'both', 'JSON round trip retains gauge placement');
   assert.equal(await page.locator('.sch-legend [data-twist-symbol]').count(), 1, 'legend uses the paired-line marker');
 
   const beforeInvalid = await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft());
@@ -112,6 +131,7 @@ let browser;
     assert.deepEqual(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft()), beforeInvalid, 'invalid setting must not replace the open drawing');
   };
   await uploadInvalid(data => { data.connections[0].colorOrderSwapped = 'false'; });
+  await uploadInvalid(data => { data.connections[0].gaugeLabelPosition = 'middle'; });
   await uploadInvalid(data => { data.meta.titleBlockX = { x: 12 }; });
 
   await page.evaluate(() => {

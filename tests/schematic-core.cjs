@@ -48,6 +48,14 @@ assert.equal(enriched.meta.pinNameFontSize, 6);
 assert.equal(enriched.meta.titleBlockX, 300);
 assert.equal(enriched.meta.revisionBlockW, 500);
 assert.equal(enriched.connections[0].colorOrderSwapped, true);
+const labelSettings = model.normalize({ components: [], connections: [
+  { id: 'legacy-label', type: 'lv', gauge: '0.75 mm²', targets: [] },
+  { id: 'end-label', type: 'lv', gaugeLabelPosition: 'end', targets: [] },
+  { id: 'invalid-label', type: 'lv', gaugeLabelPosition: 'elsewhere', targets: [] },
+] }, context());
+assert.equal(Object.hasOwn(labelSettings.connections[0], 'gaugeLabelPosition'), false, 'legacy wire keeps its default shape');
+assert.equal(labelSettings.connections[1].gaugeLabelPosition, 'end');
+assert.equal(Object.hasOwn(labelSettings.connections[2], 'gaugeLabelPosition'), false, 'unknown label position falls back to start');
 assert.equal(Object.hasOwn(model.normalize({ components: [] }, context()).meta, 'legendNote'), false);
 const legacyFrames = model.createDemo(context());
 assert.deepEqual(geometry.drawingFrame(legacyFrames, 'title'), { x: 1040, y: 818, w: 342, h: 64 });
@@ -123,6 +131,11 @@ assert.equal(split.state.components.length, 5);
 const child = split.state.connections.find(wire => wire.parentWireId === 'w4');
 assert.equal(child.parentTargetId, 't4');
 assert.equal(child.parentJunctionId, split.junctionId);
+const placementParent = model.clone(drawing);
+placementParent.connections.find(wire => wire.id === 'w4').gaugeLabelPosition = 'end';
+const placementBranch = routing.buildBranches(placementParent, geometry.endpointPositions(placementParent)).find(item => item.wire.id === 'w4');
+const placementSplit = routing.splitBranchAt(placementParent, placementBranch, routing.branchMidpoint(placementParent, placementBranch), context());
+assert.equal(placementSplit.state.connections.find(wire => wire.parentWireId === 'w4').gaugeLabelPosition, 'end', 'junction child retains its parent gauge placement');
 assert.equal(child.targets[0].to, '');
 assert.equal(child.targets[0].pairTo, '');
 assert.ok(child.pairFrom);
@@ -145,6 +158,27 @@ assert.equal(moved[0].waypoints[0].x, snapshots[0].points[0].x + 20);
 assert.equal(moved[0].waypoints[0].y, snapshots[0].points[0].y + 30);
 assert.equal(routing.labelPlacement(drawing, freeze(branches)).filter(branch => branch.label).length, 6);
 assert.equal(routing.wireText({ net: 'SIG', gauge: '', function: 'Sense' }), 'SIG · Sense', 'an omitted gauge must not render a missing-gauge warning');
+
+const branchFor = (wire, id, endpoint) => ({ id: `${wire.id}:${id}`, wire, route: [{ x: 100, y: 300 }, { x: endpoint, y: 300 }] });
+const labelState = { meta: { sheetSize: 'A3' }, components: [], connections: [] };
+const legacyWire = { id: 'wire-label', net: 'SIG', gauge: '0.75 mm²', function: 'Sense' };
+const legacyLabel = routing.labelPlacement(labelState, [branchFor(legacyWire, 'one', 500)])[0];
+assert.equal(legacyLabel.label.text, 'SIG · 0.75 mm² · Sense', 'legacy start label remains unchanged');
+assert.equal(legacyLabel.endGaugeLabel, undefined);
+const endWire = { ...legacyWire, gaugeLabelPosition: 'end' };
+const endBranches = routing.labelPlacement(labelState, [branchFor(endWire, 'one', 500), branchFor(endWire, 'two', 750)]);
+assert.equal(endBranches[0].label.text, 'SIG · Sense', 'moving gauge keeps net and function at the source');
+assert.equal(endBranches[1].label, undefined, 'multi-target wire keeps just one source label');
+assert.deepEqual(endBranches.map(branch => branch.endGaugeLabel?.text), ['0.75 mm²', '0.75 mm²'], 'each target receives its own gauge');
+assert.ok(endBranches[0].endGaugeLabel.x > endBranches[0].label.x + 100, 'end label is closer to the target than the source');
+const verticalEnd = routing.labelPlacement(labelState, [{ id: 'vertical', wire: endWire, route: [{ x: 500, y: 100 }, { x: 500, y: 600 }] }])[0];
+assert.ok(verticalEnd.endGaugeLabel.y > 500, 'vertical end label remains near a downward destination');
+const bothWire = { ...legacyWire, gaugeLabelPosition: 'both' };
+const bothLabels = routing.labelPlacement(labelState, [branchFor(bothWire, 'one', 500), branchFor(bothWire, 'two', 750)]);
+assert.equal(bothLabels[0].label.text, 'SIG · 0.75 mm² · Sense');
+assert.equal(bothLabels.filter(branch => branch.endGaugeLabel).length, 2);
+const emptyGaugeLabels = routing.labelPlacement(labelState, [branchFor({ ...endWire, gauge: '' }, 'one', 500)]);
+assert.equal(emptyGaugeLabels[0].endGaugeLabel, undefined, 'empty gauge has no end marker');
 
 const emptyPart = { type: 'component', connectors: [], devices: [] };
 assert.deepEqual(geometry.componentMinimumSize(emptyPart, 10), { w: 50, h: 20 });
