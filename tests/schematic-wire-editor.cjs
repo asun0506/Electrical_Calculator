@@ -14,7 +14,8 @@ let browser;
     args: ['--allow-file-access-from-files'],
   });
   const page = await browser.newPage({ viewport: { width: 1700, height: 1100 }, acceptDownloads: true });
-  page.on('dialog', dialog => dialog.accept());
+  let acceptDialog = true;
+  page.on('dialog', dialog => acceptDialog ? dialog.accept() : dialog.dismiss());
   await page.goto(pathToFileURL(path.join(root, 'index.html')).href);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -136,6 +137,46 @@ let browser;
     ElectricalToolkit.get('schematic').restoreDraft(draft);
   });
   assert.ok(await page.locator('.sch-wire-twisted [data-twist-symbol="vertical"]').count() > 0, 'vertical paired run rotates the marker');
+
+  await page.locator('[data-wire-segment="wire:wire-target"]').first().evaluate(element => {
+    element.dispatchEvent(new MouseEvent('click', { bubbles: true, clientX: 850, clientY: 400 }));
+  });
+  const canInspector = page.locator('[data-wire-inspector="wire"]');
+  await canInspector.waitFor();
+  const originalCoreColor = await page.locator('[data-wire-branch="wire:wire-target"] .sch-can-high').getAttribute('stroke');
+  await canInspector.locator('[data-swap-wire-colors]').click();
+  assert.notEqual(await page.locator('[data-wire-branch="wire:wire-target"] .sch-can-high').getAttribute('stroke'), originalCoreColor);
+  assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().connections[0].colorOrderSwapped), true);
+  const beforeDelete = await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft());
+  acceptDialog = false;
+  await canInspector.locator('[data-delete-wire-inspector]').click();
+  assert.deepEqual(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft()), beforeDelete);
+  acceptDialog = true;
+  await canInspector.locator('[data-delete-wire-inspector]').click();
+  assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().connections.length), 0);
+  await page.locator('#schUndo').click();
+  assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().connections.length), 1);
+
+  await page.evaluate(() => {
+    const draft = ElectricalToolkit.get('schematic').captureDraft();
+    const base = draft.connections[0];
+    draft.connections.push({ ...structuredClone(base), id: 'other', colorOrderSwapped: false, targets: [{ ...structuredClone(base.targets[0]), id: 'other-target' }] });
+    draft.connections.push({ ...structuredClone(base), id: 'child', parentWireId: base.id, parentTargetId: base.targets[0].id, type: 'lv', targets: [{ ...structuredClone(base.targets[0]), id: 'child-target' }] });
+    ElectricalToolkit.get('schematic').restoreDraft(draft);
+  });
+  const otherColor = await page.locator('[data-wire-branch="other:other-target"] .sch-can-high').getAttribute('stroke');
+  await page.locator('[data-wire-segment="wire:wire-target"]').first().evaluate(element => element.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await page.locator('[data-wire-inspector="wire"] [data-swap-wire-colors]').click();
+  assert.equal(await page.locator('[data-wire-branch="other:other-target"] .sch-can-high').getAttribute('stroke'), otherColor, 'other twisted pair keeps its own order');
+  await page.keyboard.press('Escape');
+
+  await page.locator('[data-wire-segment="child:child-target"]').first().evaluate(element => element.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await page.locator('[data-wire-inspector="child"] [data-delete-wire-inspector]').click();
+  assert.deepEqual((await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().connections.map(w => w.id))).sort(), ['other', 'wire']);
+  await page.locator('#schUndo').click();
+  await page.locator('[data-wire-segment="wire:wire-target"]').first().evaluate(element => element.dispatchEvent(new MouseEvent('click', { bubbles: true })));
+  await page.locator('[data-wire-inspector="wire"] [data-delete-wire-inspector]').click();
+  assert.deepEqual(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().connections.map(w => w.id)), ['other'], 'deleting a parent includes its child but not a sibling');
 
   console.log('PASS schematic canvas wire editor, optional gauge and editable legend');
 })().catch(error => {
