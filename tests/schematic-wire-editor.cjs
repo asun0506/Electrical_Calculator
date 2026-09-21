@@ -70,7 +70,16 @@ let browser;
   const legendInspector = page.locator('[data-legend-inspector]');
   await legendInspector.waitFor();
   await legendInspector.locator('[data-legend-label="lv"]').fill('低压信号线（自定义）');
+  await legendInspector.locator('[data-legend-note]').fill('A&B <test>');
   assert.match(await page.locator('.sch-legend').textContent(), /低压信号线（自定义）/);
+  assert.match(await page.locator('.sch-legend').textContent(), /A&B <test>/);
+  assert.match(await page.locator('#schDiagram').evaluate(el => el.outerHTML), /A&amp;B &lt;test&gt;/);
+  const noteDownload = page.waitForEvent('download');
+  await page.locator('#schExportSvg').click();
+  const notePath = path.join(root, 'schematic-legend-note-test.svg');
+  await (await noteDownload).saveAs(notePath);
+  assert.match(fs.readFileSync(notePath, 'utf8'), /A&amp;B &lt;test&gt;/);
+  fs.unlinkSync(notePath);
   assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().meta.legendLabels.lv), '低压信号线（自定义）');
   if (process.env.SCHEMATIC_LEGEND_SCREENSHOT) await page.screenshot({ path: process.env.SCHEMATIC_LEGEND_SCREENSHOT, fullPage: true });
 
@@ -91,6 +100,8 @@ let browser;
   });
   await page.locator('#schImport').setInputFiles({ name: 'schematic-legend-roundtrip-test.json', mimeType: 'application/json', buffer: exported });
   assert.match(await page.locator('.sch-legend').textContent(), /低压信号线（自定义）/);
+  assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().meta.legendNote), 'A&B <test>');
+  assert.equal(await page.locator('.sch-legend [data-twist-symbol]').count(), 1, 'legend uses the paired-line marker');
 
   const beforeInvalid = await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft());
   const uploadInvalid = async mutation => {
@@ -101,6 +112,30 @@ let browser;
   };
   await uploadInvalid(data => { data.connections[0].colorOrderSwapped = 'false'; });
   await uploadInvalid(data => { data.meta.titleBlockX = { x: 12 }; });
+
+  await page.evaluate(() => {
+    const draft = ElectricalToolkit.get('schematic').captureDraft();
+    for (const component of draft.components) {
+      const connector = component.connectors[0];
+      connector.pins[0].twisted = true;
+      connector.pins[0].pairGroup = '1';
+      connector.pins.push({ id: component.id + '-p2', no: '2', definition: 'PAIR_B', twisted: true, pairGroup: '1' });
+    }
+    draft.connections[0].type = 'can';
+    draft.connections[0].pairFrom = 'pin:source-p2';
+    draft.connections[0].targets[0].pairTo = 'pin:target-p2';
+    ElectricalToolkit.get('schematic').restoreDraft(draft);
+  });
+  assert.ok(await page.locator('.sch-wire-twisted [data-twist-symbol]').count() > 0, 'paired wire uses the same marker construction as the legend');
+  await page.evaluate(() => {
+    const draft = ElectricalToolkit.get('schematic').captureDraft();
+    draft.components[0].connectors[0].side = 'bottom';
+    draft.components[1].connectors[0].side = 'top';
+    draft.components[1].x = draft.components[0].x;
+    draft.components[1].y = 500;
+    ElectricalToolkit.get('schematic').restoreDraft(draft);
+  });
+  assert.ok(await page.locator('.sch-wire-twisted [data-twist-symbol="vertical"]').count() > 0, 'vertical paired run rotates the marker');
 
   console.log('PASS schematic canvas wire editor, optional gauge and editable legend');
 })().catch(error => {
