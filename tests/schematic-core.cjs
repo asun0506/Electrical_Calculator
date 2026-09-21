@@ -37,6 +37,18 @@ assert.equal(defaults.connections[0].targets[0].to, 'pin:new');
 assert.deepEqual(defaults.connections[0].targets[0].waypoints, []);
 assert.equal(model.createDemo(context()).meta.date, '2026-09-18');
 assert.equal(model.rotationValue(-90), 270);
+// New drawing settings must normalize without changing legacy JSON shape.
+const enriched = model.normalize({
+  meta: { legendNote: '<tag>\nsecond', componentNameFontSize: 99, pinNameFontSize: 2, titleBlockX: 300, revisionBlockW: 500 },
+  components: [], connections: [{ id: 'can-1', type: 'can', colorOrderSwapped: true, targets: [] }]
+}, context());
+assert.equal(enriched.meta.legendNote, '<tag> second');
+assert.equal(enriched.meta.componentNameFontSize, 32);
+assert.equal(enriched.meta.pinNameFontSize, 6);
+assert.equal(enriched.meta.titleBlockX, 300);
+assert.equal(enriched.meta.revisionBlockW, 500);
+assert.equal(enriched.connections[0].colorOrderSwapped, true);
+assert.equal(Object.hasOwn(model.normalize({ components: [] }, context()).meta, 'legendNote'), false);
 
 // Catch coordinate/side rotation, pin spacing and grid regressions.
 for (const [angle, expected] of [[0, { x: 20, y: 10, side: 'right' }], [90, { x: 10, y: 20, side: 'bottom' }], [180, { x: 0, y: 10, side: 'left' }], [270, { x: 10, y: 0, side: 'top' }]]) {

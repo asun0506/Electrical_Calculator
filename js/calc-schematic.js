@@ -344,7 +344,8 @@
   function exportJson(){download(new Blob([JSON.stringify({...clone(state),exportedAt:new Date().toISOString()},null,2)],{type:'application/json'}),`${safe(state.meta.drawingNo)}_${safe(state.meta.version)}.json`);}
   function validImport(data){
     const S=window.ElectricalSafety;
-    const numeric=new Set(['x','y','w','h','offset','rotation','canvasZoom','gridSize','legendX','legendY','workspaceOrder']);
+    const frameKeys=['titleBlockX','titleBlockY','titleBlockW','titleBlockH','revisionBlockX','revisionBlockY','revisionBlockW','revisionBlockH'];
+    const numeric=new Set(['x','y','w','h','offset','rotation','canvasZoom','gridSize','legendX','legendY','workspaceOrder',...frameKeys]);
     const record=(v,collections=[])=>S.isPlainObject(v)&&Object.entries(v).every(([key,value])=>{
       if(collections.includes(key))return true;
       if(value!=null&&!['string','number','boolean'].includes(typeof value))return false;
@@ -358,8 +359,10 @@
     const connector=k=>record(k,['pins'])&&list(k.pins,96,p=>record(p));
     const device=d=>record(d,['ports'])&&list(d.ports,96,p=>typeof p==='string'||typeof p==='number');
     const legendLabels=value=>S.isPlainObject(value)&&Object.entries(value).every(([key,label])=>Object.prototype.hasOwnProperty.call(lineTypes,key)&&typeof label==='string'&&label.length<=200);
-    const meta=value=>record(value,['legendLabels'])&&(value.legendLabels==null||legendLabels(value.legendLabels));
-    return S.isPlainObject(data)&&(data.meta==null||meta(data.meta))&&Array.isArray(data.components)&&data.components.length<=500&&data.components.every(c=>record(c,['connectors','devices'])&&list(c.connectors,100,connector)&&list(c.devices,200,device))&&list(data.connections,2000,w=>record(w,['targets'])&&list(w.targets,200,target))&&list(data.revisions,1000,r=>record(r));
+    const boundedNumber=(value,min,max)=>typeof value==='number'&&Number.isFinite(value)&&value>=min&&value<=max;
+    const meta=value=>record(value,['legendLabels'])&&(value.legendLabels==null||legendLabels(value.legendLabels))&&(value.legendNote==null||typeof value.legendNote==='string'&&value.legendNote.length<=200)&&(value.componentNameFontSize==null||boundedNumber(value.componentNameFontSize,8,32))&&(value.pinNameFontSize==null||boundedNumber(value.pinNameFontSize,6,20))&&frameKeys.every(key=>value[key]==null||boundedNumber(value[key],0,10000));
+    const wire=w=>record(w,['targets'])&&(w.colorOrderSwapped==null||typeof w.colorOrderSwapped==='boolean')&&list(w.targets,200,target);
+    return S.isPlainObject(data)&&(data.meta==null||meta(data.meta))&&Array.isArray(data.components)&&data.components.length<=500&&data.components.every(c=>record(c,['connectors','devices'])&&list(c.connectors,100,connector)&&list(c.devices,200,device))&&list(data.connections,2000,wire)&&list(data.revisions,1000,r=>record(r));
   }
   async function importJson(e){const f=e.target.files&&e.target.files[0];if(!f)return;try{if(f.size>10*1024*1024)throw new Error('JSON 大小不能超过 10 MB');const next=normalize(window.ElectricalSafety.parseJson(await f.text(),{maxArrayLength:2000,validate:validImport}));state=next;render();}catch(err){alert(`导入失败：${err.message}`);}finally{e.target.value='';}}
   function invalidCanPairs(){return state.connections.filter(w=>w.type==='can'&&!canPairComplete(w));}

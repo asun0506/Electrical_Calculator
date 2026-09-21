@@ -92,6 +92,16 @@ let browser;
   await page.locator('#schImport').setInputFiles({ name: 'schematic-legend-roundtrip-test.json', mimeType: 'application/json', buffer: exported });
   assert.match(await page.locator('.sch-legend').textContent(), /低压信号线（自定义）/);
 
+  const beforeInvalid = await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft());
+  const uploadInvalid = async mutation => {
+    const data = structuredClone(beforeInvalid);
+    mutation(data);
+    await page.locator('#schImport').setInputFiles({ name: 'invalid-settings.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(data)) });
+    assert.deepEqual(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft()), beforeInvalid, 'invalid setting must not replace the open drawing');
+  };
+  await uploadInvalid(data => { data.connections[0].colorOrderSwapped = 'false'; });
+  await uploadInvalid(data => { data.meta.titleBlockX = { x: 12 }; });
+
   console.log('PASS schematic canvas wire editor, optional gauge and editable legend');
 })().catch(error => {
   console.error(error);
