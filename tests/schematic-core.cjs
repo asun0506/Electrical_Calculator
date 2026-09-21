@@ -165,6 +165,9 @@ const legacyWire = { id: 'wire-label', net: 'SIG', gauge: '0.75 mm²', function:
 const legacyLabel = routing.labelPlacement(labelState, [branchFor(legacyWire, 'one', 500)])[0];
 assert.equal(legacyLabel.label.text, 'SIG · 0.75 mm² · Sense', 'legacy start label remains unchanged');
 assert.equal(legacyLabel.endGaugeLabel, undefined);
+const blankLegacy = { id: 'blank-wire', net: '', gauge: '', function: '' };
+const adjacentLegacy = routing.labelPlacement(labelState, [branchFor(blankLegacy, 'one', 500), branchFor(legacyWire, 'one', 500)]);
+assert.ok(adjacentLegacy[1].label.x > legacyLabel.label.x, 'an unlabeled legacy wire still reserves its old collision slot');
 const endWire = { ...legacyWire, gaugeLabelPosition: 'end' };
 const endBranches = routing.labelPlacement(labelState, [branchFor(endWire, 'one', 500), branchFor(endWire, 'two', 750)]);
 assert.equal(endBranches[0].label.text, 'SIG · Sense', 'moving gauge keeps net and function at the source');

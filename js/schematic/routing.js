@@ -38,7 +38,7 @@
       if(!seen.has(wire.id)){
         seen.add(wire.id);
         const text=mode==='end'?[wire.net,wire.function].filter(value=>String(value||'').trim()).join(' · '):wireText(wire);
-        if(text)item.label=place(item.route,text);
+        if(text||mode==='start')item.label=place(item.route,text);
       }
       if((mode==='end'||mode==='both')&&String(wire.gauge||'').trim())item.endGaugeLabel=place(item.route,String(wire.gauge),true);
     });
