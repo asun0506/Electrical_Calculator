@@ -87,6 +87,19 @@ let browser;
   fs.unlinkSync(svgPath);
   assert.doesNotMatch(exportedSvg, /data-resize-frame/, 'export has no edit handles');
 
+  await page.evaluate(() => ElectricalToolkit.get('schematic').restoreDraft({
+    meta: { title: 'compact drawing' },
+    components: [{ id: 'tiny', name: 'A very long component name', type: 'component', x: 200, y: 180, w: 50, h: 20, connectors: [], devices: [] }],
+    connections: [], revisions: []
+  }));
+  assert.equal(await page.locator('[data-drag-component="tiny"] .sch-component-body').getAttribute('width'), '50');
+  assert.ok(await page.locator('[data-drag-component="tiny"] .sch-component-title').evaluate(el => el.classList.contains('sch-title-outside')), 'long name belongs below the compact box');
+  await page.locator('[data-meta-number="componentNameFontSize"]').fill('18');
+  await page.locator('[data-meta-number="pinNameFontSize"]').fill('11');
+  assert.match(await page.locator('#schDiagram').getAttribute('style'), /--sch-component-font:18px/);
+  assert.match(await page.locator('#schDiagram').getAttribute('style'), /--sch-pin-font:11px/);
+  assert.equal(await page.locator('[data-drag-component="tiny"] .sch-component-title').evaluate(el => getComputedStyle(el).fontSize), '13px', 'compact title scales below the selected global size');
+
   console.log('schematic responsive layout tests passed');
 })().catch(error => {
   console.error(error);

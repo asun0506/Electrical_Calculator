@@ -64,15 +64,15 @@ for (const [angle, expected] of [[0, { x: 20, y: 10, side: 'right' }], [90, { x:
 }
 const state = freeze({ meta: { snapToGrid: true, gridSize: 10, sheetSize: 'A3' }, components: [{ id: 'part', type: 'component', x: 100, y: 100, w: 200, h: 100, devices: [], connectors: ['left', 'right', 'top', 'bottom'].map(side => ({ id: side, side, pins: [{ id: side }] })) }], connections: [] });
 assert.deepEqual(geometry.endpointPositions(state), { 'pin:left': { x: 100, y: 170, side: 'left' }, 'pin:right': { x: 300, y: 170, side: 'right' }, 'pin:top': { x: 200, y: 100, side: 'top' }, 'pin:bottom': { x: 200, y: 200, side: 'bottom' } });
-assert.deepEqual(geometry.componentMinimumSize(state.components[0]), { w: 100, h: 60 });
+assert.deepEqual(geometry.componentMinimumSize(state.components[0]), { w: 50, h: 40 });
 assert.equal(geometry.snapCoordinate(state, 26), 30);
 assert.equal(geometry.snapCoordinate(state, 26, true), 26);
 const small = freeze({ ...state, components: [{ ...state.components[0], x: 2700, w: 20, h: 20 }] });
 const sized = geometry.sizeProject(small);
 assert.equal(small.components[0].w, 20);
-assert.equal(sized.components[0].w, 100);
-assert.equal(sized.components[0].h, 60);
-assert.equal(sized.meta.sheetSize, 'A0');
+assert.equal(sized.components[0].w, 50);
+assert.equal(sized.components[0].h, 40);
+assert.equal(sized.meta.sheetSize, 'A1');
 const oldPositions = geometry.capturePinPositions(state, state.components[0]);
 const expanded = model.clone(state.components[0]);
 expanded.connectors[0].pins.push({ id: 'new', no: '2' });
@@ -145,5 +145,15 @@ assert.equal(moved[0].waypoints[0].x, snapshots[0].points[0].x + 20);
 assert.equal(moved[0].waypoints[0].y, snapshots[0].points[0].y + 30);
 assert.equal(routing.labelPlacement(drawing, freeze(branches)).filter(branch => branch.label).length, 6);
 assert.equal(routing.wireText({ net: 'SIG', gauge: '', function: 'Sense' }), 'SIG · Sense', 'an omitted gauge must not render a missing-gauge warning');
+
+const emptyPart = { type: 'component', connectors: [], devices: [] };
+assert.deepEqual(geometry.componentMinimumSize(emptyPart, 10), { w: 50, h: 20 });
+assert.deepEqual(geometry.componentMinimumSize(emptyPart, 5), { w: 25, h: 10 });
+assert.deepEqual(geometry.componentMinimumSize(emptyPart, 20), { w: 100, h: 40 });
+const pinnedPart = { ...emptyPart, x: 100, y: 100, w: 50, h: 40, connectors: [{ side: 'left', placed: true, pins: [{ id: 'compact-pin' }] }] };
+const pinnedMinimum = geometry.componentMinimumSize(pinnedPart, 10);
+assert.ok(pinnedMinimum.h >= 40, 'placed pins reserve enough vertical space');
+const pinAt = geometry.connectorPosition({ meta: { gridSize: 10, snapToGrid: true } }, pinnedPart, pinnedPart.connectors[0], pinnedPart.connectors[0].pins[0]);
+assert.ok(pinAt.y >= pinnedPart.y + 10 && pinAt.y <= pinnedPart.y + pinnedPart.h - 10, 'pin stays within a compact component edge');
 
 console.log('PASS schematic pure model, geometry and routing characterization');
