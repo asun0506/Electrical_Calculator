@@ -31,6 +31,16 @@
   function endpointPositions(state){const map={};state.components.forEach(c=>{c.connectors.filter(connectorIsPlaced).forEach(k=>k.pins.forEach(p=>map[`pin:${p.id}`]=connectorPosition(state,c,k,p)));c.devices.forEach(d=>d.ports.forEach((_,i)=>map[`device:${d.id}:${i}`]=embeddedDevicePortPosition(c,d,i)));});return map;}
   function outward(state,p,d){if(p.side==='left')return{x:snapCoordinate(state,p.x-d),y:p.y};if(p.side==='right')return{x:snapCoordinate(state,p.x+d),y:p.y};if(p.side==='top')return{x:p.x,y:snapCoordinate(state,p.y-d)};return{x:p.x,y:snapCoordinate(state,p.y+d)};}
   function legendPosition(state){const {w:cw,h:ch}=canvasDimensions(state),fallback={x:cw-400,y:ch-205},x=state.meta.legendMoved&&Number.isFinite(Number(state.meta.legendX))?Number(state.meta.legendX):fallback.x,y=state.meta.legendMoved&&Number.isFinite(Number(state.meta.legendY))?Number(state.meta.legendY):fallback.y;return{x:clamp(x,12,cw-382),y:clamp(y,35,ch-112)};}
+  function clampDrawingFrame(state,kind,rectangle){
+    const paper=canvasDimensions(state),rows=Math.min(4,state.revisions?.length||0),minW=280,minH=kind==='title'?64:Math.max(54,18+rows*18);
+    const w=clamp(Number(rectangle.w)||minW,minW,paper.w-24),h=clamp(Number(rectangle.h)||minH,minH,paper.h-24);
+    return{x:clamp(Number(rectangle.x)||0,12,paper.w-w-12),y:clamp(Number(rectangle.y)||0,12,paper.h-h-12),w,h};
+  }
+  function drawingFrame(state,kind){
+    const paper=canvasDimensions(state),rows=Math.min(4,state.revisions?.length||0),defaults=kind==='title'?{x:paper.w-360,y:paper.h-82,w:342,h:64}:{x:paper.w-360,y:24,w:342,h:Math.max(54,18+rows*18)},prefix=kind==='title'?'titleBlock':'revisionBlock',saved={};
+    for(const field of ['x','y','w','h']){const value=state.meta?.[prefix+field.toUpperCase()];if(Number.isFinite(value))saved[field]=value;}
+    return clampDrawingFrame(state,kind,{...defaults,...saved});
+  }
   function sizeProject(state){state=M.clone(state);let requiredW=0,requiredH=0;state.components.forEach(c=>{const minimum=componentMinimumSize(c);c.w=Math.max(Number(c.w)||0,minimum.w);c.h=Math.max(Number(c.h)||0,minimum.h);requiredW=Math.max(requiredW,c.x+c.w+20);requiredH=Math.max(requiredH,c.y+c.h+100);});const order=['A3','A2','A1','A0'];let index=Math.max(0,order.indexOf(state.meta.sheetSize));while(index<order.length-1&&(requiredW>sheetSizes[order[index]].w||requiredH>sheetSizes[order[index]].h))index++;state.meta.sheetSize=order[index];return state;}
   function stabilizePins(state,c,before,newPins=[]){
     if(c.type==='device'||c.type==='junction')return;
@@ -45,5 +55,5 @@
   }
   // Work on a private component; the view applies dimensions and offsets in place.
   function stabilizePinsAfterChange(state,component,before,newPins=[]){const copy=M.clone(component),ids=new Set(newPins.map(p=>p.id)),pins=copy.connectors.flatMap(k=>k.pins).filter(p=>ids.has(p.id));stabilizePins(state,copy,before,pins);return copy;}
-  return Object.freeze({sizeProject,stabilizePinsAfterChange,PIN_GAP,CONNECTOR_GAP,canvasDimensions,rotatePoint,sideSpan,componentMinimumSize,standaloneBaseComponent,adjustedPinPosition,embeddedDeviceFrame,embeddedDevicePortPosition,pointSegmentDistance,overlaps,isHorizontal,gridStep,snapCoordinate,snapClamp,standaloneGlyphBox,connectorPosition,capturePinPositions,endpointPositions,outward,legendPosition});
+  return Object.freeze({sizeProject,stabilizePinsAfterChange,PIN_GAP,CONNECTOR_GAP,canvasDimensions,rotatePoint,sideSpan,componentMinimumSize,standaloneBaseComponent,adjustedPinPosition,embeddedDeviceFrame,embeddedDevicePortPosition,pointSegmentDistance,overlaps,isHorizontal,gridStep,snapCoordinate,snapClamp,standaloneGlyphBox,connectorPosition,capturePinPositions,endpointPositions,outward,legendPosition,drawingFrame,clampDrawingFrame});
 });

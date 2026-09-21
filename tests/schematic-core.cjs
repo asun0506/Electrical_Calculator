@@ -49,6 +49,14 @@ assert.equal(enriched.meta.titleBlockX, 300);
 assert.equal(enriched.meta.revisionBlockW, 500);
 assert.equal(enriched.connections[0].colorOrderSwapped, true);
 assert.equal(Object.hasOwn(model.normalize({ components: [] }, context()).meta, 'legendNote'), false);
+const legacyFrames = model.createDemo(context());
+assert.deepEqual(geometry.drawingFrame(legacyFrames, 'title'), { x: 1040, y: 818, w: 342, h: 64 });
+assert.deepEqual(geometry.drawingFrame(legacyFrames, 'revision'), { x: 1040, y: 24, w: 342, h: 54 });
+const customFrames = model.normalize({ meta: { titleBlockX: 1390, titleBlockY: 880, titleBlockW: 100, titleBlockH: 20 }, components: [], revisions: Array.from({ length: 4 }, () => ({ version: 'V1' })) }, context());
+const boundedTitle = geometry.drawingFrame(customFrames, 'title');
+assert.ok(boundedTitle.w >= 280 && boundedTitle.h >= 64);
+assert.ok(boundedTitle.x + boundedTitle.w <= 1388 && boundedTitle.y + boundedTitle.h <= 888);
+assert.ok(geometry.drawingFrame(customFrames, 'revision').h >= 90);
 
 // Catch coordinate/side rotation, pin spacing and grid regressions.
 for (const [angle, expected] of [[0, { x: 20, y: 10, side: 'right' }], [90, { x: 10, y: 20, side: 'bottom' }], [180, { x: 0, y: 10, side: 'left' }], [270, { x: 10, y: 0, side: 'top' }]]) {

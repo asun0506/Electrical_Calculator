@@ -1,4 +1,5 @@
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
 const path = require('node:path');
 const { pathToFileURL } = require('node:url');
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -59,6 +60,32 @@ let browser;
   assert.ok(branchLayout.rowScrollWidth <= branchLayout.rowClientWidth + 1, `branch row overflowed by ${branchLayout.rowScrollWidth - branchLayout.rowClientWidth}px`);
   assert.ok(branchLayout.propertiesTop.every(top => Math.abs(top - branchLayout.sourceTop) <= 1), 'branch properties must sit to the right on the same row as branch endpoints');
   if (process.env.SCHEMATIC_WIRE_TABLE_SCREENSHOT) await page.locator('.sch-wire-scroll').screenshot({ path: process.env.SCHEMATIC_WIRE_TABLE_SCREENSHOT });
+
+  const titleFrame = page.locator('[data-drawing-frame="title"] > rect').first();
+  assert.equal(await titleFrame.getAttribute('x'), '1040', 'legacy title frame starts at the old A3 location');
+  const dragFrame = async (selector, dx, dy) => page.locator(selector).evaluate((el, delta) => {
+    el.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, clientX: 400, clientY: 300 }));
+    document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, clientX: 400 + delta.dx, clientY: 300 + delta.dy }));
+    document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, clientX: 400 + delta.dx, clientY: 300 + delta.dy }));
+  }, { dx, dy });
+  await dragFrame('[data-move-frame="title"]', -40, -30);
+  const moved = await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().meta);
+  assert.ok(moved.titleBlockX < 1040 && moved.titleBlockY < 818, 'title frame moves independently');
+  await dragFrame('[data-resize-frame="revision"]', 35, 35);
+  const resized = await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().meta);
+  assert.ok(resized.revisionBlockW > 342 && resized.revisionBlockH > 54, 'revision frame resizes independently');
+  await dragFrame('[data-resize-frame="title"]', 25, 25);
+  await dragFrame('[data-move-frame="revision"]', -45, 40);
+  const bothFrames = await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().meta);
+  assert.ok(bothFrames.titleBlockW > 342 && bothFrames.titleBlockH > 64, 'title frame resizes independently');
+  assert.ok(bothFrames.revisionBlockX < 1040 && bothFrames.revisionBlockY > 24, 'revision frame moves independently');
+  const svgDownload = page.waitForEvent('download');
+  await page.locator('#schExportSvg').click();
+  const svgPath = path.join(root, 'schematic-frame-layout-test.svg');
+  await (await svgDownload).saveAs(svgPath);
+  const exportedSvg = fs.readFileSync(svgPath, 'utf8');
+  fs.unlinkSync(svgPath);
+  assert.doesNotMatch(exportedSvg, /data-resize-frame/, 'export has no edit handles');
 
   console.log('schematic responsive layout tests passed');
 })().catch(error => {
