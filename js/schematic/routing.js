@@ -66,10 +66,23 @@
     const nextTarget=target('');if(w.type==='can')nextTarget.pairTo='';const nextWire={id:uid('wire'),from:junctionFrom,targets:[nextTarget],type:w.type,gauge:w.gauge||'',net:w.net||'',function:w.function||'',parentWireId:w.id,parentTargetId:t.id,parentJunctionId:junction.id};if(w.gaugeLabelPosition)nextWire.gaugeLabelPosition=w.gaugeLabelPosition;if(w.type==='can')nextWire.pairFrom=junctionPair;
     state.components.push(junction);const at=state.connections.indexOf(w);state.connections.splice(at<0?state.connections.length:at+1,0,nextWire);return {state,junctionId:junction.id};
   }
+  function removeJunction(state,junctionId){
+    state=clone(state);const selected=state.components.find(c=>c.type==='junction'&&c.id===junctionId);if(!selected)return{state,removedWireCount:0};
+    const junctionIds=new Set([junctionId]),wireIds=new Set,targetIds=new Set;
+    const pinKeys=()=>new Set(state.components.filter(c=>junctionIds.has(c.id)).flatMap(c=>c.connectors.flatMap(k=>k.pins.map(p=>`pin:${p.id}`))));
+    const markTarget=t=>{if(targetIds.has(t.id))return false;targetIds.add(t.id);(t.waypoints||[]).forEach(p=>{if(p.junctionId)junctionIds.add(p.junctionId);});return true;};
+    const markWire=(w,dependency=false)=>{if(wireIds.has(w.id))return false;wireIds.add(w.id);w.targets.forEach(markTarget);if(dependency&&w.parentJunctionId)junctionIds.add(w.parentJunctionId);return true;};
+    let changed=true;while(changed){changed=false;const keys=pinKeys();
+      state.connections.forEach(w=>{if(wireIds.has(w.id))return;const dependency=wireIds.has(w.parentWireId)||targetIds.has(w.parentTargetId)||junctionIds.has(w.parentJunctionId),source=keys.has(w.from)||keys.has(w.pairFrom);if(dependency||source){if(markWire(w,dependency))changed=true;return;}w.targets.forEach(t=>{if(keys.has(t.to)||keys.has(t.pairTo))if(markTarget(t))changed=true;});});
+      state.connections.forEach(w=>{if(!wireIds.has(w.id)&&w.targets.every(t=>targetIds.has(t.id)))if(markWire(w))changed=true;});
+    }
+    state.connections=state.connections.filter(w=>!wireIds.has(w.id)).map(w=>({...w,targets:w.targets.filter(t=>!targetIds.has(t.id)).map(t=>({...t,waypoints:(t.waypoints||[]).filter(p=>!junctionIds.has(p.junctionId))}))})).filter(w=>w.targets.length);
+    state.components=state.components.filter(c=>!junctionIds.has(c.id));return{state,removedWireCount:wireIds.size};
+  }
   function ownsEndpoint(state,c,key){if(!key)return false;const owner=state.components.find(item=>item.connectors.filter(connectorIsPlaced).some(k=>k.pins.some(p=>key===`pin:${p.id}`))||item.devices.some(d=>d.ports.some((_,i)=>key===`device:${d.id}:${i}`)));return owner?.id===c.id;}
   function prepareAttachedRoutes(state,c){const current=branches(state,endpointPositions(state)),snapshots=[];current.forEach(branch=>{const source=ownsEndpoint(state,c,branch.wire.from)||ownsEndpoint(state,c,branch.wire.pairFrom),destination=ownsEndpoint(state,c,branch.target.to)||ownsEndpoint(state,c,branch.target.pairTo);if(!source&&!destination)return;let points=branch.target.waypoints||[];if(!points.length&&branch.route.length>2)points=branch.route.slice(1,-1);snapshots.push({wireId:branch.wire.id,targetId:branch.target.id,points:points.map(p=>({...p})),source,destination});});return snapshots;}
   function moveAttachedRoutes(snapshots,dx,dy,c){return snapshots.map(item=>{const points=item.points.map(p=>({...p})),movable=p=>!p.junctionId||p.junctionId===c.id,shift=p=>{if(!p||!movable(p))return;p.x+=dx;p.y+=dy;};if(item.source&&item.destination)points.forEach(shift);else if(item.source)shift(points[0]);else if(item.destination)shift(points[points.length-1]);return {wireId:item.wireId,targetId:item.targetId,waypoints:points};});}
-  return Object.freeze({keepOutside,simplify,wireText,startLabelPoint,collinearOverlap,routeScore,crossingMap,offsetRoute,shiftedCrossings,pathWithBridges,labelPoint,branchMidpoint,manualRoute,routeBranch:routePoints,buildBranches:branches,findCrossings:crossingMap,labelPlacement,splitBranchAt,ownsEndpoint,prepareAttachedRoutes,moveAttachedRoutes,
+  return Object.freeze({keepOutside,simplify,wireText,startLabelPoint,collinearOverlap,routeScore,crossingMap,offsetRoute,shiftedCrossings,pathWithBridges,labelPoint,branchMidpoint,manualRoute,routeBranch:routePoints,buildBranches:branches,findCrossings:crossingMap,labelPlacement,splitBranchAt,removeJunction,ownsEndpoint,prepareAttachedRoutes,moveAttachedRoutes,
     ensureJunctionBindings:state=>waypointUpdates(state,ensureJunctionBindings),
     syncJunctionWaypoints:state=>waypointUpdates(state,syncJunctionWaypoints)
   });

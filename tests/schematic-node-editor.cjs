@@ -35,9 +35,10 @@ let browser;
     ],
     connections: [
       { id: 'device-wire', from: 'pin:device-pin', type: 'lv', gauge: '', net: 'SENSE', function: '', targets: [{ id: 'device-wire-target', to: 'pin:device-target-pin', waypoints: [] }] },
-      { id: 'trunk', from: 'pin:source-pin', type: 'lv', gauge: '0.5 mm²', net: 'SIG', function: '', targets: [{ id: 'trunk-target', to: 'pin:target-pin', waypoints: [{ x: 430, y: 270, junctionId: 'junction-one' }] }] },
+      { id: 'trunk', from: 'pin:source-pin', type: 'lv', gauge: '0.5 mm²', net: 'SIG', function: '', targets: [{ id: 'trunk-target', to: 'pin:target-pin', waypoints: [{ x: 430, y: 270, junctionId: 'junction-one' }] }, { id: 'trunk-junction-target', to: 'pin:junction-one-pin', waypoints: [] }] },
       { id: 'branch', from: 'pin:junction-one-pin', type: 'lv', gauge: '0.5 mm²', net: 'SIG', function: '', parentWireId: 'trunk', parentTargetId: 'trunk-target', parentJunctionId: 'junction-one', targets: [{ id: 'branch-target-id', to: 'pin:branch-target-pin', waypoints: [{ x: 430, y: 410, junctionId: 'junction-two' }] }] },
       { id: 'leaf', from: 'pin:junction-two-pin', type: 'lv', gauge: '0.5 mm²', net: 'SIG', function: '', parentWireId: 'branch', parentTargetId: 'branch-target-id', parentJunctionId: 'junction-two', targets: [{ id: 'leaf-target-id', to: 'pin:leaf-target-pin', waypoints: [] }] },
+      { id: 'extra-incoming', from: 'pin:leaf-target-pin', type: 'lv', gauge: '', net: 'EXTRA', function: '', targets: [{ id: 'extra-incoming-target', to: 'pin:junction-two-pin', waypoints: [] }] },
     ],
     revisions: [],
   }));
@@ -64,6 +65,8 @@ let browser;
   const inspector = page.locator('[data-junction-inspector="junction-one"]');
   await inspector.waitFor();
   assert.equal(await inspector.getAttribute('aria-label'), '中间点属性');
+  await page.keyboard.press('ArrowRight');
+  assert.equal(await inspector.locator('[data-inspector-junction-field="x"]').inputValue(), '440', 'keyboard movement synchronizes to the open inspector');
   await inspector.locator('[data-inspector-junction-field="name"]').fill('Branch J1');
   await inspector.locator('[data-inspector-junction-field="x"]').fill('470');
   await inspector.locator('[data-inspector-junction-field="color"]').fill('#c2410c');
@@ -92,6 +95,7 @@ let browser;
   await inspector.locator('[data-delete-junction-inspector]').click();
   const deleted = await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft());
   assert.deepEqual(deleted.connections.map(w => w.id).sort(), ['device-wire', 'trunk'], 'trunk remains while junction branches and descendants are removed');
+  assert.deepEqual(deleted.connections.find(w => w.id === 'trunk').targets.map(t => t.id), ['trunk-target'], 'only the trunk target ending at the deleted junction is removed');
   assert.ok(deleted.components.every(c => c.id !== 'junction-one' && c.id !== 'junction-two'), 'dependent junction nodes are removed with their branches');
   assert.ok(deleted.connections.find(w => w.id === 'trunk').targets[0].waypoints.every(p => !p.junctionId), 'trunk keeps its route without deleted junction anchors');
   await page.locator('#schUndo').click();

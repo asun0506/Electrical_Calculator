@@ -173,6 +173,23 @@ assert.notEqual(originalTarget.waypoints.find(p => p.junctionId === split.juncti
 const unbound = model.clone(split.state);
 unbound.connections.find(w => w.id === 'w4').targets[0].waypoints = [];
 assert.ok(routing.ensureJunctionBindings(freeze(unbound)).find(item => item.wireId === 'w4').waypoints.some(p => p.junctionId === split.junctionId));
+const cleanupState = freeze({ meta: { sheetSize: 'A3' }, components: [
+  { id: 'keep-a', type: 'component', connectors: [{ pins: [{ id: 'keep-a-pin' }] }], devices: [] },
+  { id: 'keep-b', type: 'component', connectors: [{ pins: [{ id: 'keep-b-pin' }] }], devices: [] },
+  { id: 'junction-one', type: 'junction', connectors: [{ pins: [{ id: 'junction-one-pin' }] }], devices: [] },
+  { id: 'junction-two', type: 'junction', connectors: [{ pins: [{ id: 'junction-two-pin' }] }], devices: [] },
+], connections: [
+  { id: 'trunk', from: 'pin:keep-a-pin', targets: [{ id: 'keep-target', to: 'pin:keep-b-pin', waypoints: [{ x: 50, y: 50, junctionId: 'junction-one' }] }, { id: 'remove-target', to: 'pin:junction-one-pin', waypoints: [] }] },
+  { id: 'branch', from: 'pin:junction-one-pin', parentWireId: 'trunk', parentTargetId: 'keep-target', parentJunctionId: 'junction-one', targets: [{ id: 'branch-target', to: 'pin:keep-b-pin', waypoints: [{ x: 70, y: 70, junctionId: 'junction-two' }] }] },
+  { id: 'leaf', from: 'pin:junction-two-pin', parentWireId: 'branch', parentTargetId: 'branch-target', parentJunctionId: 'junction-two', targets: [{ id: 'leaf-target', to: 'pin:keep-b-pin', waypoints: [] }] },
+  { id: 'extra-incoming', from: 'pin:keep-b-pin', targets: [{ id: 'extra-target', to: 'pin:junction-two-pin', waypoints: [] }] },
+] });
+const cleaned = routing.removeJunction(cleanupState, 'junction-one');
+assert.deepEqual(cleaned.state.connections.map(w => w.id), ['trunk'], 'junction cleanup preserves a multi-target trunk and removes dependent/extra lines');
+assert.deepEqual(cleaned.state.connections[0].targets.map(t => t.id), ['keep-target'], 'only the target ending at the removed junction is deleted');
+assert.deepEqual(cleaned.state.connections[0].targets[0].waypoints, [], 'removed junction anchors are stripped from the trunk');
+assert.deepEqual(cleaned.state.components.map(c => c.id), ['keep-a', 'keep-b'], 'dependent junction nodes are removed to a fixed point');
+assert.equal(cleaned.removedWireCount, 3);
 const snapshots = routing.prepareAttachedRoutes(drawing, drawing.components[1]);
 assert.ok(snapshots.length > 0);
 const moved = routing.moveAttachedRoutes(freeze(snapshots), 20, 30, drawing.components[1]);
