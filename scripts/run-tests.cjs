@@ -15,6 +15,7 @@ const groups = Object.freeze({
     'tests/import-safety-browser.cjs',
     'tests/schematic-browser.cjs',
     'tests/schematic-layout.cjs',
+    'tests/schematic-node-editor.cjs',
     'tests/schematic-wire-editor.cjs',
     'tests/schematic-print-layout.cjs',
     'tests/standards-library.cjs',

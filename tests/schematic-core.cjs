@@ -88,6 +88,28 @@ const stabilized = geometry.stabilizePinsAfterChange(state, freeze(expanded), ol
 assert.equal(geometry.connectorPosition(state, stabilized, stabilized.connectors[0], stabilized.connectors[0].pins[0]).y, 170);
 assert.ok(Math.abs(geometry.connectorPosition(state, stabilized, stabilized.connectors[0], stabilized.connectors[0].pins[1]).y - 170) >= 30);
 
+// Standalone-device Pin offsets follow the currently displayed edge, including rotation.
+const deviceState = freeze({ meta: { snapToGrid: true, gridSize: 10, sheetSize: 'A3' }, components: [], connections: [] });
+const movableDevice = freeze({ id: 'device', type: 'device', symbolType: 'shunt', x: 200, y: 100, w: 104, h: 76, rotation: 0, connectors: [
+  { id: 'device-left', side: 'left', pins: [{ id: 'device-left-pin', offset: 11 }] },
+  { id: 'device-bottom', side: 'bottom', pins: [{ id: 'device-bottom-pin', offset: 11 }] },
+], devices: [] });
+const plainDevice = model.clone(movableDevice);
+plainDevice.connectors.forEach(connector => connector.pins.forEach(pin => { pin.offset = 0; }));
+const leftBase = geometry.connectorPosition(deviceState, plainDevice, plainDevice.connectors[0], plainDevice.connectors[0].pins[0]);
+const leftMoved = geometry.connectorPosition(deviceState, movableDevice, movableDevice.connectors[0], movableDevice.connectors[0].pins[0]);
+assert.deepEqual(leftMoved, { ...leftBase, y: leftBase.y + 11 }, 'left device Pin moves vertically along its edge');
+const bottomBase = geometry.connectorPosition(deviceState, plainDevice, plainDevice.connectors[1], plainDevice.connectors[1].pins[0]);
+const bottomMoved = geometry.connectorPosition(deviceState, movableDevice, movableDevice.connectors[1], movableDevice.connectors[1].pins[0]);
+assert.deepEqual(bottomMoved, { ...bottomBase, x: bottomBase.x + 11 }, 'bottom device Pin moves horizontally along its edge');
+const rotatedDevice = model.clone(movableDevice);
+rotatedDevice.rotation = 90;
+const rotatedPlain = model.clone(rotatedDevice);
+rotatedPlain.connectors.forEach(connector => connector.pins.forEach(pin => { pin.offset = 0; }));
+const rotatedBase = geometry.connectorPosition(deviceState, rotatedPlain, rotatedPlain.connectors[0], rotatedPlain.connectors[0].pins[0]);
+const rotatedMoved = geometry.connectorPosition(deviceState, rotatedDevice, rotatedDevice.connectors[0], rotatedDevice.connectors[0].pins[0]);
+assert.deepEqual(rotatedMoved, { ...rotatedBase, x: rotatedBase.x + 11 }, 'rotated device Pin follows its displayed top edge');
+
 // Literal routes characterized against the original calculator, including a
 // reversed/obstructed endpoint case. This router does not avoid component boxes.
 const horizontal = [{ x: 100, y: 100, side: 'right' }, { x: 300, y: 100, side: 'left' }];
