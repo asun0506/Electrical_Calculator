@@ -43,14 +43,14 @@ let browser;
     data.limitValue = 1; data.limitUnit = 'ohm'; calc.restoreDraft(data);
   }, png);
   const cdBefore = await snapshot('conductor');
-  let text = await report('#cdExportPdfEn', '.cd-report', 'Conductor Resistance Verification Report');
+  let text = await report('#cdExportPdfEn', '.cd-report', 'Battery Pack RLC Verification Report');
   assert.ok(text.includes('通过 铜 Cu（退火） <Busbar>'), 'Chinese custom name unchanged');
   assert.ok(text.includes('Copper Cu (annealed)') && text.includes('PASS'), text);
   assert.equal(await page.locator('.cd-report-image').getAttribute('src'), png);
   await page.pdf({ path: path.join(output, 'conductor-en.pdf'), preferCSSPageSize: true, printBackground: false });
   await finishPrint();
   assert.deepEqual(await snapshot('conductor'), cdBefore);
-  await report('#cdExportPdf', '.cd-report', '导体电阻校核报告'); await finishPrint();
+  await report('#cdExportPdf', '.cd-report', '电池包RLC校核报告'); await finishPrint();
   console.log('PASS conductor: EN/ZH, image, result, unchanged inputs');
 
   await open('relay-fuse');

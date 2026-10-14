@@ -175,6 +175,14 @@
           </div>
         </div>
 
+        <div class="panel">
+          <h3 class="panel-title"><span class="dot"></span>4. 图表名称</h3>
+          <div class="grid cols-2">
+            <div class="field"><label for="bb-current-title">电流–时间曲线名称</label><input id="bb-current-title" type="text" maxlength="200" placeholder="留空使用默认名称"></div>
+            <div class="field"><label for="bb-temperature-title">汇流排温升曲线名称</label><input id="bb-temperature-title" type="text" maxlength="200" placeholder="留空使用默认名称"></div>
+          </div>
+        </div>
+
         <div class="panel" id="bb-result" style="display:none"></div>
 
         <details class="panel">
@@ -197,7 +205,7 @@
           document.getElementById('bb-mat').value === 'custom' ? 'block' : 'none';
         calc();
       });
-      ['bb-ta', 'bb-w', 'bb-h', 'bb-len', 'bb-rho', 'bb-c', 'bb-dens', 'bb-hc', 'bb-tamb', 'bb-t0', 'bb-dt', 'bb-j-cu', 'bb-j-al', 'bb-mat']
+      ['bb-ta', 'bb-w', 'bb-h', 'bb-len', 'bb-rho', 'bb-c', 'bb-dens', 'bb-hc', 'bb-tamb', 'bb-t0', 'bb-dt', 'bb-j-cu', 'bb-j-al', 'bb-mat', 'bb-current-title', 'bb-temperature-title']
         .forEach((id) => {
           const el = document.getElementById(id);
           el.addEventListener('input', calc);
@@ -331,16 +339,16 @@
 
     const currentChart = T.lineChart({
       width: 780, height: 360,
-      title: `电流–时间曲线（${pts.length} 个 Map 点）`,
+      title: document.getElementById('bb-current-title').value.trim() || `电流–时间曲线（${pts.length} 个 Map 点）`,
       x: { label: '时间 t', unit: 's' },
       y: { label: '电流 I', unit: 'A' },
       series: [{ name: '输入电流 I(t)', color: '#2563eb', points: downsample(pts, 1000) }],
-      hLines: [{ y: I_avg, color: '#16a34a', label: `平均电流 ${E.fmt(I_avg)} A`, dashed: true }],
+      hLines: [{ y: I_rms, color: '#16a34a', label: `RMS 有效电流 ${E.fmt(I_rms)} A`, dashed: true }],
     });
 
     const temperatureChart = T.lineChart({
       width: 780, height: 420,
-      title: `汇流排温升曲线（${matName}，I_rms=${E.fmt(I_rms)} A）`,
+      title: document.getElementById('bb-temperature-title').value.trim() || `汇流排温升曲线（${matName}，I_rms=${E.fmt(I_rms)} A）`,
       x: { label: '时间 t', unit: 's' },
       y: { label: '温度 T', unit: '°C' },
       series: [{ name: '温度 T(t)', color: '#dc2626', points: points.map((p) => [p.time, p.temperature]) }],

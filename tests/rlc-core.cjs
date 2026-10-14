@@ -1,0 +1,25 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const file=path.join(__dirname,'..','js','rlc-core.js');
+assert.ok(fs.existsSync(file),'RLC calculation core exists');
+const M=require(file),close=(a,b)=>assert.ok(Math.abs(a-b)<1e-12,`${a} != ${b}`);
+// 10 cm × 0.5 cm × 0.1 cm straight bar, NBS TN-1024 equation 7.
+close(M.inductanceUh(100,5,1),0.08039935794639964);
+const transient=M.shortCircuit(400,.1,5e-6);
+close(transient.tau,50e-6);close(transient.finalCurrent,4000);
+close(transient.currentAt(0),0);close(transient.currentAt(50e-6),2528.4822353142306);
+close(transient.currentAt(250e-6),3973.0482120036583);
+close(M.shortCircuit(400,.1,0).currentAt(0),4000);
+assert.throws(()=>M.shortCircuit(400,0,1));assert.throws(()=>M.inductanceUh(1,10,10));
+const net=M.network(['R1','//','R2'],{1:{r:1,l:1},2:{r:2,l:4}});
+close(net.r,2/3);close(net.l,8/9);
+const zero=M.network(['R1','+',2],{1:{r:1,l:1}});close(zero.r,3);close(zero.l,1);
+const zeroConstant=M.network(['R1','+',0],{1:{r:1,l:1}});close(zeroConstant.r,1);close(zeroConstant.l,1);
+assert.throws(()=>M.network(['R9'],{}));
+const caps=M.capacitance({voltage:400,yNf:1000,areaCm2:100,gapMm:1,er:1,includeStray:false});
+close(caps.parasiticF,8.8541878128e-11);close(caps.yEnergy,.08);assert.equal(caps.energyPass,true);
+const total=M.capacitance({voltage:400,yNf:2499,areaCm2:2000,gapMm:1,er:1,includeStray:true});
+assert.equal(total.energyPass,false,'touch path includes selected parasitic capacitance');
+assert.equal(M.capacitance({voltage:400,yNf:2500,areaCm2:0,gapMm:1,er:1}).energyPass,false,'0.2 J equality fails strict threshold');
+assert.equal(M.capacitance({voltage:400,yNf:null,areaCm2:0,gapMm:1,er:1}).energyPass,null,'missing Y capacitance is not a pass');
+assert.throws(()=>M.capacitance({voltage:400,yNf:1,areaCm2:1,gapMm:0,er:1}));
+console.log('PASS RLC geometry, RL step response, network approximation and capacitance/energy boundary');

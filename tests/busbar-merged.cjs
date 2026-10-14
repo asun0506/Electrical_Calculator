@@ -38,6 +38,6 @@ assert.match(math.wireRecommendation(301).label, /> 300/);
 
 const index = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
 assert.doesNotMatch(index, /src="js\/calc-rms-current\.js/, 'legacy standalone RMS module is no longer loaded');
-assert.match(index, /src="js\/calc-busbar-temp\.js\?v=4\.0"/);
+assert.match(index, /src="js\/calc-busbar-temp\.js(?:\?[^"]*)?"/);
 
 console.log('PASS merged RMS / wire size / busbar temperature module');

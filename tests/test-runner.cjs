@@ -11,6 +11,9 @@ assert.deepEqual(runner.groups.unit, [
   'tests/busbar-merged.cjs',
   'tests/dfmea.cjs',
   'tests/standards-data.cjs',
+  'tests/part-design-data.cjs',
+  'tests/dvpr-merge.cjs',
+  'tests/rlc-core.cjs',
 ]);
 assert.ok(runner.groups.browser.includes('tests/schematic-browser.cjs'));
 assert.ok(runner.groups.browser.includes('tests/schematic-wire-editor.cjs'));

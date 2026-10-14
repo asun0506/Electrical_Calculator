@@ -186,10 +186,27 @@
   // Reuse the closest electrical/mechanical profile where a product has no unique list.
   specific['thermal-fuse'] = specific['thermal-fuse'];
   const rowProfiles = {};
+  const designGuides = {};
+  const designLibrary = global.PART_DESIGN_LIBRARY;
   products.forEach((product) => {
+    const guide = designLibrary?.guide(product);
+    if (guide) {
+      designGuides[product.id] = guide;
+      product.designGroup = guide.group;
+      product.recommendedStandards = [...new Set([...product.recommendedStandards, ...guide.recommendedStandards])];
+    }
     let extra = specific[product.id];
     if (!extra && product.id === 'plastic') extra = specific.plastic;
-    const externalRows = common.concat(extra || [], (supplement.profiles || {})[product.id] || []);
+    const contactProducts = ['hv-connector','lv-connector','crimp-terminal','electric-swap-connector','lv-harness','hv-cable'];
+    const electrical = guide?.group === '电气件';
+    const applicableCommon = common.filter(row =>
+      (!['绝缘电阻','耐电压'].includes(row[0]) || contactProducts.includes(product.id)) &&
+      (row[1] !== 'ISO 16750' || !guide || electrical));
+    const specificRows = (extra || []).map(row => /EMC/.test(row[0]) && row[1] === 'ISO 16750' && designLibrary
+      ? ['窄带辐射EMC抗扰','ISO 11452-2:2019','暗室法；与ISO 11452-1一般条件配合',row[3],row[4],
+        '按项目受控场强、频率和线束配置','暗室窄带辐射并监测输出/诊断',row[7],row[8]] : row);
+    const externalRows = applicableCommon.concat(specificRows, (supplement.profiles || {})[product.id] || [],
+      guide ? guide.checks.map(c=>c.profile.slice()) : []);
     const internalRows = ((internalLib.profiles || {})[product.id] || []).map((row) => row.slice());
     const internalNames = new Set(internalRows.map((row) => String(row[0] || '').replace(/\s+/g, '').toLowerCase()));
     const crossCheckRows = externalRows.filter((row) => !internalNames.has(String(row[0] || '').replace(/\s+/g, '').toLowerCase())).map((row) => [
@@ -198,5 +215,6 @@
     rowProfiles[product.id] = externalRows.concat(internalRows, crossCheckRows);
   });
 
-  global.DVPR_LIBRARY = { version:2, products, standards, mappings, profiles:rowProfiles, internalSourceStats:internalLib.sourceStats || {} };
+  global.DVPR_LIBRARY = { version:2, products, standards, mappings, profiles:rowProfiles, designGuides,
+    productGroups:designLibrary?.productGroups || [], internalSourceStats:internalLib.sourceStats || {} };
 })(window);

@@ -11,6 +11,8 @@
 
   const T = window.ElectricalToolkit;
   const E = window.ElUtil;
+  const M = window.BatteryRLC;
+  const RLC_DEFAULTS = {packVoltage:400,extraResistanceMohm:0,loopInductanceUh:'',responseEndUs:'',yCapNf:'',strayAreaCm2:0,strayGapMm:1,relativePermittivity:1,includeStrayInTouch:false};
   let hostRef;
   let state;
   let idSeq = 0;
@@ -53,6 +55,7 @@
       temperatureC: 20,
       quantity: 1,
       quantityRelation: 'parallel',
+      inductanceUh: '',
       image: null,
       ...overrides,
     };
@@ -60,7 +63,8 @@
 
   function defaultState() {
     return {
-      schemaVersion: 2,
+      schemaVersion: 3,
+      ...RLC_DEFAULTS,
       displayUnit: 'mohm',
       expression: 'R1',
       limitValue: '',
@@ -96,6 +100,7 @@
         <option value="parallel" ${item.quantityRelation === 'parallel' ? 'selected' : ''}>并联 R/n</option>
         <option value="series" ${item.quantityRelation === 'series' ? 'selected' : ''}>串联 nR</option>
       </select>
+      <input data-field="inductanceUh" type="number" min="0" step="any" value="${esc(item.inductanceUh??'')}" placeholder="空=几何估算" aria-label="单根电感 μH">
       <div class="cd-row-image">${image
         ? `<button type="button" class="cd-image-preview" data-preview-image="${esc(item.id)}" title="单击放大附图"><img src="${esc(image.dataUrl)}" alt="${esc(image.name)}"></button><label class="btn cd-file-btn cd-change-image">更换附图<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" data-row-image="${esc(item.id)}"></label><button type="button" data-remove-image="${esc(item.id)}">移除</button>`
         : `<label class="btn cd-file-btn">添加附图<input type="file" accept="image/png,image/jpeg,.png,.jpg,.jpeg" data-row-image="${esc(item.id)}"></label>`}</div>
@@ -106,7 +111,7 @@
   function render() {
     hostRef.innerHTML = `<style>${moduleStyle()}</style>
       <section class="panel cd-toolbar">
-        <div><h3>导体电阻项目校核</h3><p>单段、多段使用同一套校核。每段可命名、设置同规格数量及串并联关系，并附加设计截图。</p></div>
+        <div><h3>电池包 RLC 校核</h3><p>导体电阻/电感、直流短路响应，以及 Y 电容储能与寄生电容。保留导体段、串并联表达式和附图。</p></div>
         <div class="cd-actions">
           <button type="button" class="btn" id="cdExportJson">导出 JSON</button>
           <label class="btn cd-file-btn">导入 JSON<input id="cdImportJson" type="file" accept="application/json,.json"></label>
@@ -127,7 +132,7 @@
       <section class="panel">
         <div class="cd-section-head"><div><h3 class="panel-title"><span class="dot"></span>导体段</h3><p>R1、R2 是表达式引用；“名称”可填写母排、线束、连接片等实际对象。</p></div><button type="button" class="btn" id="cdAdd">＋ 添加导体段</button></div>
         <div class="cd-table-scroll">
-          <div class="cd-segment-head"><span>引用</span><span>名称</span><span>材质</span><span>长度/mm</span><span>宽/mm</span><span>厚/mm</span><span>温度/°C</span><span>数量</span><span>同规格关系</span><span>附图</span><span></span></div>
+          <div class="cd-segment-head"><span>引用</span><span>名称</span><span>材质</span><span>长度/mm</span><span>宽/mm</span><span>厚/mm</span><span>温度/°C</span><span>数量</span><span>同规格关系</span><span>单根L/μH</span><span>附图</span><span></span></div>
           <div id="cdRows">${state.conductors.map(rowHtml).join('')}</div>
         </div>
       </section>
@@ -140,12 +145,15 @@
       </section>
 
       <section class="panel" id="cdResult"></section>
+      <section class="panel"><h3>短路电流响应（等效 RL）</h3><div class="grid cols-4">${rlcInput('packVoltage','整包电压 U','V')}${rlcInput('extraResistanceMohm','电芯/接触等额外回路电阻','mΩ')}${rlcInput('loopInductanceUh','整回路电感覆盖值（可选）','μH','空=导体网络估算')}${rlcInput('responseEndUs','曲线结束时间（可选）','μs','空=5τ')}</div><div id="cdRlcResult"></div></section>
+      <section class="panel"><h3>Y 电容与寄生电容</h3><div class="grid cols-4">${rlcInput('yCapNf','单故障接触路径 Y 总电容','nF','请汇总该接触路径全部并联电容')}${rlcInput('strayAreaCm2','导体有效重叠面积','cm²')}${rlcInput('strayGapMm','导体间距','mm')}${rlcInput('relativePermittivity','相对介电常数 εr（空气=1）','')}</div><label class="cd-touch-checkbox"><input id="cd-includeStrayInTouch" type="checkbox"${state.includeStrayInTouch?' checked':''}>该寄生电容属于带电导体—车身接触路径，计入总储能</label><div id="cdCapResult"></div></section>
       <section class="cd-report-shell" id="cdReportShell"></section>`;
     bindEvents();
     calculateAndRender();
   }
 
   function bindEvents() {
+    Object.keys(RLC_DEFAULTS).forEach(key=>hostRef.querySelector(`#cd-${key}`).addEventListener('input',e=>{state[key]=e.target.type==='checkbox'?e.target.checked:e.target.value;calculateAndRender();}));
     hostRef.querySelectorAll('[data-conductor-id] input[data-field], [data-conductor-id] select[data-field]').forEach((control) => control.addEventListener('input', handleRowInput));
     hostRef.querySelectorAll('[data-delete-row]').forEach((button) => button.addEventListener('click', () => deleteRow(button.dataset.deleteRow)));
     hostRef.querySelectorAll('[data-row-image]').forEach((input) => input.addEventListener('change', importRowImage));
@@ -334,9 +342,42 @@
       box.innerHTML = `<h3 class="panel-title"><span class="dot"></span>校核结果</h3>${resultTable(result)}
         <div class="result-grid cd-result-grid"><div class="result-card"><div class="k">组合总电阻</div><div class="v">${E.fmtExact(result.totalResistance * displayUnit.factor, 6)}<small> ${displayUnit.label}</small></div></div><div class="result-card"><div class="k">组合总电导</div><div class="v">${E.fmtExact(1 / result.totalResistance, 6)}<small> S</small></div></div></div>
         <div class="note"><strong>组合表达式：</strong><code class="formula-line">${esc(state.expression)}</code></div>${conclusionHtml(result)}`;
+      hostRef.querySelector('#cdRlcResult').innerHTML = rlHtml(result);
     } catch (error) {
       box.innerHTML = `<h3 class="panel-title"><span class="dot"></span>校核结果</h3><div class="status-banner err">${esc(error.message)}</div>`;
+      hostRef.querySelector('#cdRlcResult').innerHTML=`<div class="status-banner err">请先修正导体电阻网络：${esc(error.message)}</div>`;
     }
+    hostRef.querySelector('#cdCapResult').innerHTML=capHtml();
+  }
+
+  function rlcInput(key,label,unit,placeholder=''){return `<div class="field"><label for="cd-${key}">${label}</label><div class="input-row"><input id="cd-${key}" type="number" min="0" step="any" value="${esc(state[key])}" placeholder="${esc(placeholder)}"><span class="unit">${unit}</span></div></div>`;}
+  function checkedNumber(key,allowBlank=false){const value=E.parseNum(state[key]);if(value==null&&(!allowBlank||textFilled(state[key])))throw Error(`${key}参数未填写完整或无效`);return value;}
+  function rlHtml(result,lang='zh'){
+    const en=lang==='en',label=(zh,english)=>en?english:zh;
+    try{
+      const voltage=checkedNumber('packVoltage'),extraR=checkedNumber('extraResistanceMohm'),override=checkedNumber('loopInductanceUh',true),endInput=checkedNumber('responseEndUs',true);
+      if(extraR<0||override!=null&&override<0||endInput!=null&&endInput<=0)throw Error('附加电阻/电感不能为负；时间范围须大于0');
+      const map={},details=[];let geometryError='';
+      for(const s of result.segments){let singleL=null;try{const manual=E.parseNum(s.item.inductanceUh);if(textFilled(s.item.inductanceUh)&&manual==null)throw Error('单根电感无效');if(manual!=null){if(manual<0)throw Error('单根电感不能为负');singleL=manual;}else{if(['iron','steel'].includes(s.item.material))throw Error('磁性材料需手动输入电感');singleL=M.inductanceUh(s.lengthMm,s.widthMm,s.heightMm);}map[s.index]={r:s.effectiveResistance,l:singleL*1e-6*(s.item.quantityRelation==='series'?s.quantity:1/s.quantity)};}catch(e){geometryError+=`R${s.index}: ${e.message}；`;}
+        details.push(`<tr><td>R${s.index} / ${esc(s.item.name||'')}</td><td>${singleL==null?'—':E.fmtExact(singleL,6)} μH</td><td>${singleL==null?'—':E.fmtExact(map[s.index].l*1e6,6)} μH</td><td>${textFilled(s.item.inductanceUh)?label('手动值','Manual'):label('直段几何估算','Straight-bar estimate')}</td></tr>`);
+      }
+      const detailTable=`<div class="cd-table-scroll"><table class="param-table"><thead><tr><th>${label('导体段','Conductor')}</th><th>${label('单根电感','Single inductance')}</th><th>${label('数量折算电感','Quantity-adjusted inductance')}</th><th>${label('来源','Source')}</th></tr></thead><tbody>${details.join('')}</tbody></table></div>`;
+      if(override==null&&geometryError)return`${detailTable}<div class="status-banner warn">${esc(geometryError)}${label('请补充单根电感或整回路覆盖值。','Enter segment inductances or a measured loop override.')}</div>`;
+      const l=override==null?M.network(tokenize(state.expression.trim()),map).l:override*1e-6;
+      const r=result.totalResistance+extraR/1000,response=M.shortCircuit(voltage,r,l),end=endInput==null?(response.tau?5*response.tau:300e-6):endInput*1e-6;
+      const points=Array.from({length:201},(_,i)=>{const t=end*i/200;return[t*1e6,response.currentAt(t)];});
+      const chart=T.lineChart({width:780,height:380,title:label('短路电流–时间响应（等效 RL）','Short-circuit current vs time (equivalent RL)'),x:{label:label('时间 t','Time t'),unit:'μs'},y:{label:label('短路电流 I','Short-circuit current I'),unit:'A'},series:[{name:'I(t)',color:'#2563eb',points}],hLines:[{y:response.finalCurrent,color:'#64748b',label:`I∞ = ${E.fmtExact(response.finalCurrent,3)} A`,dashed:true}]});
+      return`${detailTable}<div class="result-grid"><div class="result-card"><div class="k">${label('回路电阻（含额外R）','Loop resistance incl. additional R')}</div><div class="v">${E.fmtExact(r*1000,6)}<small> mΩ</small></div></div><div class="result-card"><div class="k">${label('等效回路电感','Equivalent loop inductance')}</div><div class="v">${E.fmtExact(l*1e6,6)}<small> μH</small></div></div><div class="result-card"><div class="k">${label('预期稳态短路电流','Prospective steady-state fault current')}</div><div class="v" data-rlc-metric="current">${E.fmtExact(response.finalCurrent,3)}<small> A</small></div></div><div class="result-card"><div class="k">τ = L / R</div><div class="v" data-rlc-metric="tau">${E.fmtExact(response.tau*1e6,6)}<small> μs</small></div></div></div><div class="normal-chart-wrap">${chart}</div><div class="note">${label('I(t)=U/R×(1−exp(−t/τ))，初始电流为0；零电感时电流理想瞬时到达U/R。几何L为非磁性细长直段自由空间近似，未计回流路径、互感、集肤效应和端部影响。串并联网络L采用低频展开的一阶等效；多支路可能存在多个时间常数，图示不是完整网络瞬态求解。实测/仿真整回路L优先。电芯内阻、接触电阻应加入额外R；图中未计电压跌落、保护分断及电容放电。','Zero-initial-current DC RL approximation; zero L implies instantaneous U/R. Geometry is a non-magnetic slender straight-bar estimate without return-path coupling, mutual inductance, skin or end effects. Mixed networks use a low-frequency first-order equivalent, not a multi-pole transient solution. A measured/simulated loop L is preferred. Include cell/contact resistance in additional R. Voltage sag, protection interruption and capacitor discharge are not simulated.')}</div>${geometryError?`<div class="note">${esc(geometryError)}</div>`:''}`;
+    }catch(e){return`<div class="status-banner err">${esc(e.message)}</div>`;}
+  }
+  function textFilled(v){return String(v??'').trim()!=='';}
+  function capHtml(lang='zh'){
+    const en=lang==='en',label=(zh,english)=>en?english:zh;
+    try{
+      const values={voltage:checkedNumber('packVoltage'),yNf:checkedNumber('yCapNf',true),areaCm2:checkedNumber('strayAreaCm2'),gapMm:checkedNumber('strayGapMm'),er:checkedNumber('relativePermittivity'),includeStray:state.includeStrayInTouch===true};
+      const c=M.capacitance(values),status=c.energyPass==null?label('Y总电容未填写，不作储能判定。','Y capacitance is missing; no energy assessment.'):c.energyPass?label('满足储能条件：接触路径总储能 < 0.2 J（仅此条件，不是完整合规）。','Energy condition met: touch-path stored energy < 0.2 J; not full compliance.'):label('不满足本储能路径：总储能 ≥ 0.2 J；需调整设计或另行评估适用保护路径。','Energy route not met: stored energy ≥ 0.2 J; review design or applicable alternative protection.');
+      return`<div class="result-grid"><div class="result-card"><div class="k">${label('Y电容储能（按整包电压）','Y stored energy at pack voltage')}</div><div class="v">${c.yEnergy==null?'—':E.fmtExact(c.yEnergy,9)}<small> J</small></div></div><div class="result-card"><div class="k">${label('寄生电容','Parasitic capacitance')}</div><div class="v" data-rlc-metric="parasitic">${E.fmtExact(c.parasiticF*1e12,6)}<small> pF</small></div></div><div class="result-card"><div class="k">${label('接触路径总储能','Touch-path total stored energy')}</div><div class="v">${c.energy==null?'—':E.fmtExact(c.energy,9)}<small> J</small></div></div><div class="result-card"><div class="k">${label('0.2 J对应总电容边界（须小于）','Total capacitance boundary at 0.2 J (strictly below)')}</div><div class="v">${E.fmtExact(c.maxTouchF*1e9,6)}<small> nF</small></div></div></div><div class="status-banner ${c.energyPass==null?'warn':c.energyPass?'ok':'err'}">${status}</div><div class="note">${label('E=½CU²；C寄生=ε0εrA/d，ε0=8.8541878128×10⁻¹² F/m。A为面对面有效重叠面积，不是导体全部表面积；平行板近似未计边缘场，d应远小于板尺寸。空气εr默认为1。只将实际属于该带电导体—车身接触路径的并联电容计入总储能，正负极之间的电容不能自动等同于车身接触电容。单故障相关电压按整包电压保守计算，不能固定使用半包电压。ISO 13063-3:2022针对电动轻便摩托车/摩托车；0.2 J是一条特定单故障情形下的路径，AC放电后接触电流等其他要求需另外校核，本页不计算它们。','E=½CU²; parallel-plate C=ε0εrA/d. A is effective facing overlap, not total conductor surface area. Fringing is omitted and the gap should be small relative to plate dimensions. Air defaults to εr=1. Only relevant live-part-to-chassis parallel capacitances belong in the touch path; pole-to-pole capacitance is not automatically chassis capacitance. Full pack voltage is used conservatively. ISO 13063-3:2022 concerns electric mopeds/motorcycles. The 0.2 J route is conditional; discharge touch current and other applicable requirements need separate verification.')}</div><p>${label('参数','Inputs')}: U=${esc(values.voltage)} V; CY=${values.yNf==null?'—':esc(values.yNf)} nF; A=${esc(values.areaCm2)} cm²; d=${esc(values.gapMm)} mm; εr=${esc(values.er)}; ${label('寄生电容计入接触路径','Parasitic included in touch path')}: ${values.includeStray?'YES':'NO'}</p>`;
+    }catch(e){return`<div class="status-banner err">${esc(e.message)}</div>`;}
   }
 
   function downloadBlob(blob, fileName) {
@@ -352,7 +393,7 @@
 
   function exportJson() {
     const payload = { ...clone(state), exportedAt: new Date().toISOString(), calculator: 'conductor-resistance-check' };
-    downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `导体电阻校核_${new Date().toISOString().slice(0, 10)}.json`);
+    downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), `电池包RLC校核_${new Date().toISOString().slice(0, 10)}.json`);
   }
 
   async function importJson(event) {
@@ -362,10 +403,11 @@
       const S = window.ElectricalSafety;
       if (file.size > 10 * 1024 * 1024) throw new Error('JSON 大小不能超过 10 MB');
       const data = S.parseJson(await file.text(), { maxArrayLength: 1000, validate: data =>
-        S.isPlainObject(data) && Array.isArray(data.conductors) && data.conductors.length > 0 &&
+        S.isPlainObject(data) && Object.keys(RLC_DEFAULTS).every(key=>data[key]==null||['string','number','boolean'].includes(typeof data[key])) && (data.includeStrayInTouch==null||typeof data.includeStrayInTouch==='boolean') && Array.isArray(data.conductors) && data.conductors.length > 0 &&
         data.conductors.every(item => S.isPlainObject(item) && Object.entries(item).every(([key, value]) => key === 'image' || value == null || ['string', 'number', 'boolean'].includes(typeof value)) &&
           (!item.image || (S.isPlainObject(item.image) && S.validateImageDataUrl(item.image.dataUrl)))) });
       const next = defaultState();
+      Object.keys(RLC_DEFAULTS).forEach(key=>{if(data[key]!=null)next[key]=data[key];});
       next.displayUnit = RESISTANCE_UNITS[data.displayUnit] ? data.displayUnit : next.displayUnit;
       next.expression = typeof data.expression === 'string' ? data.expression : 'R1';
       next.limitValue = data.limitValue == null ? '' : data.limitValue;
@@ -379,6 +421,7 @@
         temperatureC: item.temperatureC ?? 20,
         quantity: item.quantity ?? 1,
         quantityRelation: item.quantityRelation === 'series' ? 'series' : 'parallel',
+        inductanceUh: item.inductanceUh ?? '',
         image: item.image?.dataUrl ? item.image : null,
       }));
       state = next;
@@ -391,7 +434,7 @@
   }
 
   function clearProject() {
-    if (!window.confirm('确认清空当前导体电阻校核吗？建议先导出 JSON 备份。')) return;
+    if (!window.confirm('确认清空当前电池包 RLC 校核吗？建议先导出 JSON 备份。')) return;
     state = defaultState();
     render();
   }
@@ -399,10 +442,11 @@
   function reportHtml(result, lang = 'zh') {
     const r = T.reportLanguage(lang);
     const conclusion = r(result.passed == null ? '未设置限值，仅计算' : (result.passed ? '合格' : '不合格'));
-    return r`<article class="cd-report" lang="${lang}"><header><h1>导体电阻校核报告</h1><p>生成时间：${new Date().toLocaleString(lang === 'en' ? 'en-GB' : 'zh-CN')}</p></header>
+    return r`<article class="cd-report" lang="${lang}"><header><h1>电池包RLC校核报告</h1><p>生成时间：${new Date().toLocaleString(lang === 'en' ? 'en-GB' : 'zh-CN')}</p></header>
       <section><h2>1. 校核设置</h2><table><tr><th>组合表达式</th><td>${esc(state.expression)}</td><th>显示单位</th><td>${RESISTANCE_UNITS[state.displayUnit].label}</td></tr><tr><th>总电阻上限</th><td>${result.limitOhm == null ? r('未设置') : resistanceText(result.limitOhm)}</td><th>结论</th><td class="${result.passed === false ? 'fail' : 'pass'}">${conclusion}</td></tr></table></section>
       <section><h2>2. 导体段明细</h2>${resultTable(result, true, lang)}</section>
       <section><h2>3. 计算结果</h2><p class="cd-report-total">组合总电阻：<b>${resistanceText(result.totalResistance)}</b></p><p>组合总电导：${E.fmtExact(1 / result.totalResistance, 6)} S</p><p>计算依据：R=ρ(T)×L/A；同规格导体按所选数量关系折算，再依表达式进行串并联组合。</p></section>
+      ${`<section><h2>${lang==='en'?'4. Inductance and short-circuit response':'4. 电感与短路电流响应'}</h2><p>U=${esc(state.packVoltage)} V; ${lang==='en'?'Additional resistance':'额外回路电阻'}=${esc(state.extraResistanceMohm)} mΩ; ${lang==='en'?'Loop L override':'整回路电感覆盖'}=${textFilled(state.loopInductanceUh)?esc(state.loopInductanceUh)+' μH':'—'}; ${lang==='en'?'Time range':'时间范围'}=${textFilled(state.responseEndUs)?esc(state.responseEndUs)+' μs':'5τ'}</p>${rlHtml(result,lang)}</section><section><h2>${lang==='en'?'5. Y and parasitic capacitance':'5. Y电容与寄生电容'}</h2>${capHtml(lang)}</section>`}
     </article>`;
   }
 
@@ -416,7 +460,7 @@
     const originalNextSibling = shell.nextSibling;
     document.body.appendChild(shell);
     const oldTitle = document.title;
-    document.title = T.reportLanguage(lang)('导体电阻校核报告');
+    document.title = T.reportLanguage(lang)('电池包RLC校核报告');
     const restore = () => {
       document.title = oldTitle;
       shell.classList.remove('active');
@@ -430,6 +474,7 @@
   function moduleStyle() {
     return `
       .cd-toolbar,.cd-section-head{display:flex;justify-content:space-between;gap:18px;align-items:center}.cd-toolbar h3,.cd-toolbar p,.cd-section-head h3,.cd-section-head p{margin:3px 0}.cd-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px}.cd-file-btn{position:relative;overflow:hidden}.cd-file-btn input{position:absolute;inset:0;opacity:0;cursor:pointer}.cd-settings{display:grid;grid-template-columns:220px minmax(300px,420px) 1fr;gap:14px;align-items:end}.cd-settings>label{display:grid;gap:5px}.cd-settings>label>span{font-weight:700;font-size:12px}.cd-settings .input-row select{max-width:82px}.cd-table-scroll{overflow:auto;margin-top:12px}.cd-segment-head,.cd-segment-row{display:grid;grid-template-columns:58px minmax(150px,1.2fr) minmax(175px,1.3fr) 90px 80px 80px 90px 72px 125px 150px 40px;gap:7px;align-items:stretch;min-width:1270px}.cd-segment-head{padding:7px;background:#edf2f6;border:1px solid #c3cfda;font-size:12px;font-weight:700;text-align:center}.cd-segment-row{padding:7px;border:1px solid #d3dce4;border-top:0;background:#fff}.cd-segment-row input,.cd-segment-row select{width:100%;min-width:0}.cd-ref{display:flex;align-items:center;justify-content:center;background:#f0f5f8;border:1px solid #c8d3dc}.cd-row-image{display:grid;grid-template-columns:44px 1fr auto;gap:5px;align-items:center;min-width:0}.cd-image-preview{display:block;width:44px;height:40px;padding:0!important;border:1px solid #ccd6df!important;background:#f5f7f9!important;cursor:zoom-in!important}.cd-row-image img{display:block;width:42px;height:38px;object-fit:contain}.cd-row-image>button:not(.cd-image-preview){border:0;background:none;color:#b42318;cursor:pointer;padding:2px}.cd-row-image .btn{font-size:11px;padding:6px}.cd-change-image{grid-column:auto!important}.cd-result-table{margin-top:10px}.cd-result-table th,.cd-result-table td{font-size:12px;vertical-align:top}.cd-result-grid{margin-top:12px}.cd-report-shell{display:none}.btn.danger{color:#b42318;border-color:#e2a7a7}
+      .cd-segment-head,.cd-segment-row{grid-template-columns:58px minmax(150px,1.2fr) minmax(175px,1.3fr) 90px 80px 80px 90px 72px 125px 115px 150px 40px;min-width:1390px}.cd-touch-checkbox{display:flex;align-items:center;gap:8px;margin:12px 0}.cd-touch-checkbox input{width:auto}.cd-report .normal-chart-wrap{break-inside:avoid}.cd-report .result-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
       @media(max-width:900px){.cd-toolbar,.cd-section-head{align-items:flex-start;flex-direction:column}.cd-actions{justify-content:flex-start}.cd-settings{grid-template-columns:1fr}}
       @media print{@page{size:A4 portrait;margin:12mm}html,body{min-height:0!important;height:auto!important;background:#fff!important}body>*:not(.cd-report-shell){display:none!important}.cd-report-shell.active{display:block!important;position:static!important;width:100%!important;background:#fff!important;color:#111!important}.cd-report{font-family:'Microsoft YaHei',Arial,sans-serif;font-size:9pt}.cd-report header{border-bottom:2px solid #173b5e;margin-bottom:10mm}.cd-report h1{font-size:20pt;margin:0 0 3mm}.cd-report h2{font-size:12pt;margin:7mm 0 2mm}.cd-report table{width:100%;border-collapse:collapse;table-layout:fixed}.cd-report th,.cd-report td{border:1px solid #777;padding:2mm;word-break:break-word}.cd-report th{background:#e9eef2}.cd-report .cd-result-table th,.cd-report .cd-result-table td{font-size:7.5pt}.cd-report-image{display:block;max-width:26mm;max-height:22mm;margin:auto}.cd-report-total{font-size:13pt}.cd-report .pass{color:#087b3b;font-weight:700}.cd-report .fail{color:#b42318;font-weight:700}}
     `;
@@ -440,14 +485,15 @@
     captureDraft: () => clone(state),
     restoreDraft(saved) {
       if (!Array.isArray(saved.conductors) || !saved.conductors.length) throw new Error('导体草稿缺少导体段');
-      state = { ...defaultState(), ...clone(saved) };
+      state = { ...defaultState(), ...clone(saved),schemaVersion:3 };
+      state.conductors=state.conductors.map((item,index)=>newConductor(index+1,item));
       render();
     },
     refreshDraft: calculateAndRender,
-    title: '导体电阻',
+    title: '电池包 RLC 校核',
     icon: '🧪',
     group: '电气计算',
-    desc: '统一校核单段或多段导体，支持命名、数量串并联、附图、JSON 续填与 A4 PDF 报告。',
+    desc: '导体R/L与直流短路响应，Y电容接触路径储能及平行板寄生电容估算；支持JSON续填与中英文PDF。',
     render(host) {
       hostRef = host;
       state = defaultState();

@@ -1,0 +1,71 @@
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+
+(async () => {
+  const browser = await chromium.launch({ executablePath:process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless:true, args:['--allow-file-access-from-files'] });
+  try {
+    const page = await browser.newPage({ viewport:{width:1500,height:1000} });
+    const errors = [];
+    page.on('pageerror', e=>errors.push(e.message));
+    page.on('dialog', d=>d.accept());
+    await page.goto(pathToFileURL(path.join(__dirname,'..','index.html')).href);
+    await page.evaluate(()=>ElectricalToolkit.open('dvpr'));
+    const groups = page.locator('[data-picker-group="product"]');
+    assert.ok(await groups.count() >= 6, 'products shown in compact classified groups');
+    assert.equal(await groups.evaluateAll(nodes=>nodes.some(n=>n.open)), false, 'unselected groups start collapsed');
+    const electrical = groups.filter({has:page.locator('[data-product="fpc"]')});
+    await electrical.locator('summary').click();
+    await page.locator('[data-product="fpc"]').check();
+    await page.getByRole('button',{name:'零件设计指南', exact:true}).click();
+    assert.equal(await page.locator('#dvGuideProduct').inputValue(), 'fpc', 'guide follows selected product');
+    assert.match(await page.locator('#dvGuideContent').textContent(), /IPC-2223/);
+    assert.match(await page.locator('#dvGuideContent').textContent(), /弯折|应变/);
+    assert.match(await page.locator('#dvGuideContent').textContent(), /IPC-2152/);
+    assert.match(await page.locator('#dvGuideContent').textContent(), /项目|工况/);
+    await page.locator('[data-guide-check="bend"]').click();
+    await page.getByRole('button',{name:'验证计划',exact:true}).click();
+    const bendRows = page.locator('#dvRows tr[data-row]').filter({has:page.locator('[data-field="testItem"]')});
+    assert.equal(await bendRows.count(),1);
+    assert.equal(await bendRows.first().locator('[data-field="standard"]').inputValue(),'IPC-2223');
+    assert.match(await bendRows.first().locator('[data-field="testItem"]').inputValue(),/弯折/);
+    await page.getByRole('button',{name:'零件设计指南',exact:true}).click();
+    await page.locator('[data-guide-check="bend"]').click();
+    await page.getByRole('button',{name:'验证计划',exact:true}).click();
+    assert.equal(await page.locator('#dvRows tr[data-row]').count(),1,'guide addition is idempotent');
+
+    await page.getByRole('button',{name:'选择推荐标准',exact:true}).click();
+    assert.equal(await page.locator('[data-standard="IPC-2223"]').isChecked(),true);
+    assert.ok(await page.locator('[data-picker-group="standard"]').count()>=6);
+    await page.getByRole('button',{name:'零件设计指南',exact:true}).click();
+    await page.locator('#dvGuideProduct').selectOption('fastener');
+    assert.match(await page.locator('#dvGuideContent').textContent(),/ISO 16047/);
+    assert.doesNotMatch(await page.locator('#dvGuideContent').textContent(),/FPC弯折/);
+    await page.evaluate(()=>ElectricalToolkit.open('precharge'));
+    await page.evaluate(()=>ElectricalToolkit.open('dvpr'));
+    assert.equal(await page.locator('#dvGuideProduct').inputValue(),'fastener');
+    assert.equal(await page.locator('#dvGuidePage').isVisible(),true,'guide view persists');
+    await page.reload();
+    await page.waitForSelector('#dvGuideProduct');
+    assert.equal(await page.locator('#dvGuideProduct').inputValue(),'fastener');
+    await page.locator('#dvGuideProduct').selectOption('aerogel');
+    assert.match(await page.locator('#dvGuideContent').textContent(),/ISO 8301/);
+    await page.evaluate(()=>{
+      const saved=ElectricalToolkit.get('dvpr').captureDraft();
+      saved.rows[0].sourceKey='fpc|999|IPC-2223|FPC弯折与铜箔应变';
+      ElectricalToolkit.get('dvpr').restoreDraft(saved);
+    });
+    await page.locator('#dvGuideProduct').selectOption('fpc');
+    await page.locator('[data-guide-check="bend"]').click();
+    assert.equal(await page.locator('#dvRows tr[data-row]').count(),1,'legacy profile indexes do not duplicate an existing generated row');
+    await page.locator('[data-guide-add-all]').click();
+    assert.equal(await page.locator('#dvRows tr[data-row]').count(),5,'all guide checks are added without duplicating the existing one');
+    await page.locator('[data-guide-add-all]').click();
+    assert.equal(await page.locator('#dvRows tr[data-row]').count(),5);
+    await page.setViewportSize({width:390,height:844});
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth+1),true,'mobile has no page-wide overflow');
+    assert.deepEqual(errors,[]);
+    console.log('PASS DVP classified pickers, linked guide generation, no duplicates and persisted guide selection');
+  } finally { await browser.close(); }
+})().catch(e=>{console.error(e);process.exitCode=1;});

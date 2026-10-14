@@ -1,0 +1,26 @@
+const assert=require('node:assert/strict'),path=require('node:path');
+const {pathToFileURL}=require('node:url'),{chromium}=require(process.env.PLAYWRIGHT_MODULE||'playwright');
+(async()=>{const b=await chromium.launch({executablePath:process.env.CHROME_PATH||'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--allow-file-access-from-files']});try{
+  const p=await b.newPage();p.on('dialog',d=>d.accept());await p.goto(pathToFileURL(path.join(__dirname,'..','index.html')).href);await p.evaluate(()=>ElectricalToolkit.open('conductor'));
+  assert.match(await p.locator('.calc-header h2').textContent(),/电池包.*RLC/);
+  await p.locator('#cd-packVoltage').fill('400');await p.locator('#cd-extraResistanceMohm').fill('98.28');await p.locator('#cd-loopInductanceUh').fill('5');
+  assert.match(await p.locator('[data-rlc-metric="current"]').textContent(),/4000/);assert.match(await p.locator('[data-rlc-metric="tau"]').textContent(),/50/);
+  assert.equal(await p.locator('#cdRlcResult .chart-title').count(),1);
+  await p.locator('#cd-yCapNf').fill('2500');assert.match(await p.locator('#cdCapResult').textContent(),/不满足/);
+  await p.locator('#cd-yCapNf').fill('1000');assert.match(await p.locator('#cdCapResult').textContent(),/满足储能条件/);
+  await p.locator('#cd-strayAreaCm2').fill('100');assert.match(await p.locator('[data-rlc-metric="parasitic"]').textContent(),/88\.541/);
+  await p.locator('#cd-yCapNf').fill('2499');await p.locator('#cd-strayAreaCm2').fill('2000');await p.locator('#cd-includeStrayInTouch').check();assert.match(await p.locator('#cdCapResult').textContent(),/不满足/);
+  await p.evaluate(()=>ElectricalToolkit.open('precharge'));await p.evaluate(()=>ElectricalToolkit.open('conductor'));assert.equal(await p.locator('#cd-loopInductanceUh').inputValue(),'5');assert.equal(await p.locator('#cd-includeStrayInTouch').isChecked(),true);
+  await p.reload();await p.waitForSelector('#cd-packVoltage');assert.equal(await p.locator('#cd-yCapNf').inputValue(),'2499');
+  await p.locator('#cdRows [data-field="inductanceUh"]').fill('2');
+  const download=p.waitForEvent('download');await p.locator('#cdExportJson').click();const stream=await(await download).createReadStream(),chunks=[];for await(const chunk of stream)chunks.push(chunk);const json=Buffer.concat(chunks),exported=JSON.parse(json);
+  assert.equal(exported.schemaVersion,3);assert.equal(exported.loopInductanceUh,'5');assert.equal(exported.conductors[0].inductanceUh,'2');
+  await p.locator('#cdImportJson').setInputFiles({name:'rlc.json',mimeType:'application/json',buffer:json});assert.equal(await p.locator('#cd-yCapNf').inputValue(),'2499');assert.equal(await p.locator('#cdRows [data-field="inductanceUh"]').inputValue(),'2');
+  const beforeInvalid=await p.evaluate(()=>ElectricalToolkit.get('conductor').captureDraft());
+  await p.locator('#cdImportJson').setInputFiles({name:'invalid.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({...exported,yCapNf:{unsafe:1}}))});assert.deepEqual(await p.evaluate(()=>ElectricalToolkit.get('conductor').captureDraft()),beforeInvalid,'invalid RLC parameters preserve current project');
+  await p.evaluate(()=>{window.print=()=>{};});await p.locator('#cdExportPdf').click();assert.match(await p.locator('.cd-report').textContent(),/4000/);assert.match(await p.locator('.cd-report').textContent(),/Y电容与寄生电容/);assert.equal(await p.locator('.cd-report .chart-title').count(),1);await p.evaluate(()=>window.dispatchEvent(new Event('afterprint')));
+  await p.evaluate(()=>{const saved={schemaVersion:2,expression:'R1',conductors:[{material:'copper',lengthMm:500,widthMm:5,heightMm:1,temperatureC:20,quantity:1,quantityRelation:'parallel'}]};ElectricalToolkit.get('conductor').restoreDraft(saved);});
+  assert.match(await p.locator('#cdResult').textContent(),/1\.72/);assert.equal(await p.locator('#cd-yCapNf').inputValue(),'');assert.match(await p.locator('#cdCapResult').textContent(),/未填写/);
+  await p.locator('#cd-packVoltage').fill('-1');assert.match(await p.locator('#cdRlcResult').textContent(),/无效/);assert.match(await p.locator('#cdResult').textContent(),/1\.72/);
+  console.log('PASS battery RLC curve, Y/stray energy, persistence and legacy resistance compatibility');
+}finally{await b.close();}})().catch(e=>{console.error(e);process.exitCode=1;});

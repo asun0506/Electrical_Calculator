@@ -11,7 +11,7 @@ let browser;
   await page.goto(pathToFileURL(path.join(root,'index.html')).href);
   await page.evaluate(()=>localStorage.clear()); await page.reload();
   await page.evaluate(()=>ElectricalToolkit.open('dvpr'));
-  await page.waitForSelector('[data-product="electric-swap-connector"]');
+  await page.waitForSelector('[data-product="electric-swap-connector"]',{state:'attached'});
   const audit=await page.evaluate(()=>({
     internalTotal:Object.values(DVPR_LIBRARY.internalSourceStats).reduce((sum,n)=>sum+n,0),
     products:DVPR_LIBRARY.products.length,
@@ -27,6 +27,7 @@ let browser;
   assert.equal(audit.allRecommended,true,'internal database is recommended for every product');
   assert.equal(audit.hasNonNumericSample,true,'ALL/full sample definitions are retained');
   assert.equal(await page.locator('[data-standard="内部数据库"]').isChecked(),true,'internal database is checked by default');
+  await page.locator('[data-product="electric-swap-connector"]').evaluate(el=>{el.closest('details').open=true;});
   await page.locator('[data-product="electric-swap-connector"]').check();
   await page.getByRole('button',{name:'选择推荐标准'}).click();
   assert.equal(await page.locator('[data-standard="内部数据库"]').isChecked(),true);

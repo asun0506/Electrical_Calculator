@@ -14,7 +14,7 @@ let browser;
   await page.goto(pathToFileURL(path.join(root,'index.html')).href);
   await page.evaluate(()=>localStorage.clear()); await page.reload();
   await page.evaluate(()=>ElectricalToolkit.open('dvpr'));
-  await page.waitForSelector('[data-product="hv-connector"]');
+  await page.waitForSelector('[data-product="hv-connector"]',{state:'attached'});
   await require('./import-safety-helpers.cjs').assertRejectedImport(page, 'dvpr');
 
   const audit=await page.evaluate(()=>({
@@ -26,6 +26,7 @@ let browser;
   assert.ok(Object.values(audit.profiles).every(count=>count>=12),'each product has common plus specific tests');
   assert.ok(audit.mappings.every(m=>m.equivalent===false),'mapping must explicitly reject equivalence');
 
+  await page.locator('[data-product="hv-connector"]').evaluate(el=>{el.closest('details').open=true;});
   await page.locator('[data-product="hv-connector"]').check();
   await page.locator('[data-product="relay"]').check();
   await page.getByRole('button',{name:'选择推荐标准'}).click();

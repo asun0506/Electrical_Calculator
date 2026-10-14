@@ -4,6 +4,7 @@
   const T = window.ElectricalToolkit;
   const E = window.ElUtil;
   const LIB = window.DVPR_LIBRARY;
+  const MERGE = window.DVPRMerge;
   const STATUS = ['未开始','计划中','进行中','通过','不通过','有条件通过','取消'];
   const COLUMNS = [
     ['testItem','试验项目'],['standard','引用标准'],['clause','条款/章节主题'],['sampleQty','样品数量'],
@@ -17,7 +18,7 @@
   function esc(v){ return E.escapeHtml(v == null ? '' : String(v)); }
   function clone(v){ return JSON.parse(JSON.stringify(v)); }
   function today(){ return new Date().toISOString().slice(0,10); }
-  function freshState(){ return {version:2, meta:{projectName:'新建DVP&R项目',partName:'',partNo:'',phase:'DV',revision:'A',preparedBy:'',preparedDate:today()},selectedProducts:[],selectedStandards:['内部数据库'],rows:[]}; }
+  function freshState(){ return {version:2, view:'plan',guideProduct:'',meta:{projectName:'新建DVP&R项目',partName:'',partNo:'',phase:'DV',revision:'A',preparedBy:'',preparedDate:today()},selectedProducts:[],selectedStandards:['内部数据库'],rows:[]}; }
   function product(id){ return LIB.products.find((item)=>item.id===id); }
   function normalizeRow(row){
     const base={id:uid(),sourceKey:'',productId:'',productName:'',testItem:'',standard:'项目技术规范',clause:'按项目受控版本确认',sampleQty:3,preMeasure:'',environment:'',procedure:'',postMeasure:'',acceptance:'',owner:'',planStart:'',planEnd:'',status:'未开始',reportNo:'',attachments:[]};
@@ -25,7 +26,7 @@
   }
   function normalize(saved){
     const base=freshState(); if(!saved||typeof saved!=='object')return base;
-    return {...base,...saved,meta:{...base.meta,...(saved.meta||{})},selectedProducts:(saved.selectedProducts||[]).filter(id=>product(id)),selectedStandards:(saved.selectedStandards||[]).filter(id=>LIB.standards[id]),rows:(saved.rows||[]).map(normalizeRow)};
+    return {...base,...saved,view:saved.view==='guide'?'guide':'plan',guideProduct:product(saved.guideProduct)?saved.guideProduct:'',meta:{...base.meta,...(saved.meta||{})},selectedProducts:(saved.selectedProducts||[]).filter(id=>product(id)),selectedStandards:(saved.selectedStandards||[]).filter(id=>LIB.standards[id]),rows:(saved.rows||[]).map(normalizeRow)};
   }
   function formatBytes(n){ if(n<1024)return `${n} B`; if(n<1048576)return `${(n/1024).toFixed(1)} KB`; return `${(n/1048576).toFixed(1)} MB`; }
   function download(blob,name){ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000); }
@@ -40,16 +41,62 @@
         <button type="button" class="btn" id="dvJsonExport">导出JSON</button><button type="button" class="btn" id="dvExcelExport">导出Excel</button><button type="button" class="btn btn-primary" id="dvPdfExport">导出PDF</button>
       </div></section>
       <section class="panel dv-warning"><b>标准映射不是标准互认</b><p>不同体系的适用范围、试验顺序、严酷等级、样品分配与限值可能不同。自动生成内容仅作为DVP&amp;R起始建议，正式签署前必须使用项目指定的受控版本逐条复核。</p></section>
+      <nav class="dv-tabs" aria-label="DVP&R页面"><button type="button" class="btn" data-dv-view="plan">验证计划</button><button type="button" class="btn" data-dv-view="guide">零件设计指南</button></nav>
+      <div id="dvPlanPage">
       <section class="panel"><h3>1. 项目信息</h3><div class="dv-meta">${metaField('projectName','项目名称')}${metaField('partName','零件/总成名称')}${metaField('partNo','零件号')}${metaSelect('phase','阶段',['DV','PV','DV+PV','型式试验','年度验证'])}${metaField('revision','版本')}${metaField('preparedBy','编制人')}${metaField('preparedDate','编制日期','date')}</div></section>
       <section class="panel"><div class="dv-head"><div><h3>2. 产品与标准</h3><p>可同时选择多个零件；“推荐标准”会将所选产品底库引用的标准一并勾选。</p></div><div><button type="button" class="btn" id="dvRecommend">选择推荐标准</button><button type="button" class="btn btn-primary" id="dvGenerate">生成/补充验证矩阵</button></div></div>
-        <h4>产品</h4><div class="dv-products">${LIB.products.map((p)=>`<label><input type="checkbox" data-product="${p.id}" ${state.selectedProducts.includes(p.id)?'checked':''}><span><b>${esc(p.name)}</b><small>${esc(p.category)}</small></span></label>`).join('')}</div>
-        <h4>目标标准</h4><div class="dv-standards">${Object.entries(LIB.standards).map(([id,s])=>`<label title="${esc(s.title)}" class="${id==='内部数据库'?'dv-internal-standard':''}"><input type="checkbox" data-standard="${esc(id)}" ${state.selectedStandards.includes(id)?'checked':''}><span><b>${esc(id)}</b><small>${esc(s.family)} · ${esc(s.title)}</small></span></label>`).join('')}</div>
+        <div class="dv-picker-heading"><h4>产品</h4><button type="button" class="btn btn-ghost" data-expand-picker="product">展开 / 收起全部类别</button></div><div class="dv-picker-groups">${productPickers()}</div>
+        <div class="dv-picker-heading"><h4>目标标准</h4><button type="button" class="btn btn-ghost" data-expand-picker="standard">展开 / 收起全部来源</button></div><div class="dv-picker-groups">${standardPickers()}</div>
+        <p class="dv-selection-note">国家 / ISO / IEC 标准与 IPC 专题标准分组列出；既有 LV、USCAR、UL、ASTM 和内部经验单独保留，是否采用由项目指定。</p>
       </section>
       <section class="panel"><div class="dv-head"><div><h3>3. 标准体系映射提示</h3><p>仅用于梳理相近验证主题，不代表等效替代。</p></div></div><div class="dv-mappings">${LIB.mappings.map((m)=>`<article><b>${m.systems.map(esc).join(' ↔ ')}</b><span>${esc(m.scope)}</span><p>${esc(m.note)}</p><em>不等效</em></article>`).join('')}</div></section>
-      <section class="panel"><div class="dv-head"><div><h3>4. 当前DVP&amp;R工作区</h3><p>共 <b id="dvRowCount">${state.rows.length}</b> 条。支持从Excel复制多行多列，在任意单元格直接粘贴。</p></div><div><button type="button" class="btn" id="dvAddRow">添加空白行</button><button type="button" class="btn danger" id="dvClear">清空工作区</button></div></div>
+      <section class="panel"><div class="dv-head"><div><h3>4. 当前DVP&amp;R工作区</h3><p>共 <b id="dvRowCount">${state.rows.length}</b> 条。支持从Excel复制多行多列，在任意单元格直接粘贴。</p></div><div><button type="button" class="btn" id="dvMergeRows">合并重复验证项</button><button type="button" class="btn" id="dvAddRow">添加空白行</button><button type="button" class="btn danger" id="dvClear">清空工作区</button></div></div><p id="dvMergeStatus" class="dv-selection-note" role="status">生成和导出时自动合并同一产品的重复/同义验证，保留各来源要求；不同明确条件或执行记录分别保留。</p>
         <div class="dv-table-wrap"><table class="dv-table"><thead><tr><th>产品</th>${COLUMNS.map(([,label])=>`<th>${label}</th>`).join('')}<th>操作</th></tr></thead><tbody id="dvRows">${rowsHtml()}</tbody></table></div>
-      </section><div id="dvPrintShell" class="dv-print-shell"></div>`;
+      </section></div>
+      <section class="panel" id="dvGuidePage"><div class="dv-head"><div><h3>零件设计指南</h3><p>选产品 → 核对适用标准 → 完成设计校核 → 将对应验证加入DVP&amp;R。</p></div></div><label class="dv-guide-select" for="dvGuideProduct">选择产品<select id="dvGuideProduct">${guideOptions()}</select></label><div id="dvGuideContent"></div></section>
+      <div id="dvPrintShell" class="dv-print-shell"></div>`;
     bind();
+    renderGuide();setView(state.view);
+  }
+  function productGroups(){return (LIB.productGroups.length?LIB.productGroups:[...new Set(LIB.products.map(p=>p.designGroup||p.category))]).filter(group=>LIB.products.some(p=>(p.designGroup||p.category)===group));}
+  function pickerGroup(kind,key,label,entries,selected,html){
+    const count=entries.filter(id=>selected.includes(id)).length;
+    return `<details class="dv-picker-group" data-picker-group="${kind}" data-group="${esc(key)}"${count?' open':''}><summary><b>${esc(label)}</b><span data-picker-count>已选 ${count} / ${entries.length}</span></summary><div class="dv-${kind==='product'?'products':'standards'}">${html}</div></details>`;
+  }
+  function productPickers(){return productGroups().map(group=>{const items=LIB.products.filter(p=>(p.designGroup||p.category)===group);return pickerGroup('product',group,group,items.map(p=>p.id),state.selectedProducts,items.map(p=>`<label><input type="checkbox" data-product="${esc(p.id)}" ${state.selectedProducts.includes(p.id)?'checked':''}><span><b>${esc(p.name)}</b><small>${esc(p.category)}</small></span></label>`).join(''));}).join('');}
+  function standardPickers(){
+    const names={GB:'GB / GB/T 国家标准',ISO:'ISO 国际标准',IEC:'IEC 国际标准',IPC:'IPC 电子互连专题',LV:'LV / OEM联合规范',USCAR:'USCAR 汽车行业规范',Project:'项目技术规范',Internal:'内部经验数据库',UL:'UL（既有来源）',ASTM:'ASTM（既有来源）'};
+    const families=[...new Set(['GB','ISO','IEC','IPC','LV','USCAR','UL','ASTM','Project','Internal',...Object.values(LIB.standards).map(s=>s.family)])];
+    return families.map(family=>{const entries=Object.entries(LIB.standards).filter(([,s])=>s.family===family);if(!entries.length)return'';return pickerGroup('standard',family,names[family]||family,entries.map(([id])=>id),state.selectedStandards,entries.map(([id,s])=>`<label title="${esc(s.title)}" class="${id==='内部数据库'?'dv-internal-standard':''}"><input type="checkbox" data-standard="${esc(id)}" ${state.selectedStandards.includes(id)?'checked':''}><span><b>${esc(id)}</b><small>${esc(s.title)}</small></span></label>`).join(''));}).join('');
+  }
+  function updatePickerCounts(){hostRef.querySelectorAll('[data-picker-group]').forEach(group=>{const controls=group.querySelectorAll('input[type=checkbox]');group.querySelector('[data-picker-count]').textContent=`已选 ${[...controls].filter(el=>el.checked).length} / ${controls.length}`;});}
+  function guideOptions(){
+    if(!product(state.guideProduct))state.guideProduct=state.selectedProducts[0]||LIB.products[0]?.id||'';
+    return productGroups().map(group=>`<optgroup label="${esc(group)}">${LIB.products.filter(p=>(p.designGroup||p.category)===group).map(p=>`<option value="${esc(p.id)}"${p.id===state.guideProduct?' selected':''}>${esc(p.name)}</option>`).join('')}</optgroup>`).join('');
+  }
+  function setView(view){state.view=view==='guide'?'guide':'plan';hostRef.querySelector('#dvPlanPage').hidden=state.view!=='plan';hostRef.querySelector('#dvGuidePage').hidden=state.view!=='guide';hostRef.querySelectorAll('[data-dv-view]').forEach(btn=>{const active=btn.dataset.dvView===state.view;btn.classList.toggle('btn-primary',active);btn.setAttribute('aria-pressed',String(active));});}
+  function renderGuide(){
+    const p=product(state.guideProduct),guide=LIB.designGuides?.[p?.id],box=hostRef.querySelector('#dvGuideContent');
+    if(!guide){box.innerHTML='<p>请选择已有设计指南的产品。</p>';return;}
+    const publicStandards=guide.recommendedStandards.filter(id=>['GB','ISO','IEC','IPC'].includes(LIB.standards[id]?.family));
+    box.innerHTML=`<div class="dv-guide-note"><b>${esc(p.name)} · ${esc(guide.group)}</b><p>${esc(guide.note)}</p><small>新增方法目录复核：${esc(guide.verifiedAt)}；已有标准采用其各自受控版本。</small></div>
+      <h4>相关标准与用途</h4><div class="dv-guide-standards">${publicStandards.map(id=>{const s=LIB.standards[id];return `<a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer"><b>${esc(id)}</b><span>${esc(s.title)}</span></a>`;}).join('')}</div>
+      <div class="dv-guide-actions"><button type="button" class="btn" data-guide-recommend>选用指南推荐标准</button><button type="button" class="btn btn-primary" data-guide-add-all>将校核项加入验证计划</button></div><p role="status" class="dv-selection-note">此产品当前已有 ${state.rows.filter(row=>row.productId===p.id).length} 条验证计划；加入后可在“验证计划”页编辑条件、判据和责任人。</p>
+      <div class="dv-guide-table-wrap"><table class="dv-guide-table"><thead><tr><th>核心校核 / 依据</th><th>设计校核指南</th><th>对应DVP验证</th><th>适用边界 / 项目需定义</th><th>操作</th></tr></thead><tbody>${guide.checks.map(c=>`<tr><td><b>${esc(c.item)}</b><small>${esc(c.standard)}</small></td><td>${esc(c.design)}</td><td>${esc(c.verification)}</td><td>${esc(c.boundary)}</td><td><button type="button" class="btn" data-guide-check="${esc(c.id)}">加入DVP</button></td></tr>`).join('')}</tbody></table></div>`;
+  }
+  function addGuideChecks(checkId){
+    const p=product(state.guideProduct),guide=LIB.designGuides?.[p?.id];if(!guide)return;
+    const checks=guide.checks.filter(c=>!checkId||c.id===checkId);
+    if(!state.selectedProducts.includes(p.id))state.selectedProducts.push(p.id);
+    checks.forEach(c=>{if(!state.selectedStandards.includes(c.standard))state.selectedStandards.push(c.standard);const index=LIB.profiles[p.id].findIndex(row=>row[0]===c.item&&row[1]===c.standard);if(index>=0)appendProfile(p,LIB.profiles[p.id][index],index);});
+    state.rows=MERGE.mergeRows(state.rows).rows;
+    render(hostRef);
+  }
+  function appendProfile(p,test,index){
+    const [testItem,standard,clause,sampleQty,preMeasure,environment,procedure,postMeasure,acceptance]=test;
+    const sourceKey=`${p.id}|${index}|${standard}|${testItem}`;
+    if(state.rows.some(row=>row.productId===p.id&&(row.mergeSources?.length?row.mergeSources:[row]).some(source=>source.sourceKey===sourceKey||(source.sourceKey&&source.standard===standard&&source.testItem===testItem&&String(source.environment||'')===String(environment||'')&&String(source.procedure||'')===String(procedure||'')&&String(source.acceptance||'')===String(acceptance||'')))))return false;
+    state.rows.push(normalizeRow({sourceKey,productId:p.id,productName:p.name,testItem,standard,clause,sampleQty,preMeasure,environment,procedure,postMeasure,acceptance}));return true;
   }
   function metaField(key,label,type='text'){ return `<label><span>${label}</span><input data-meta="${key}" type="${type}" value="${esc(state.meta[key])}"></label>`; }
   function metaSelect(key,label,values){ return `<label><span>${label}</span><select data-meta="${key}">${values.map(v=>`<option${state.meta[key]===v?' selected':''}>${v}</option>`).join('')}</select></label>`; }
@@ -67,14 +114,24 @@
       <td class="dv-op"><button type="button" data-copy>复制</button><button type="button" data-delete>删除</button></td></tr>`;
   }
   function renderRows(){ const tbody=hostRef.querySelector('#dvRows');tbody.innerHTML=rowsHtml();hostRef.querySelector('#dvRowCount').textContent=state.rows.length; }
+  function consolidateRows(){const result=MERGE.mergeRows(state.rows);state.rows=result.rows;renderRows();hostRef.querySelector('#dvMergeStatus').textContent=result.mergedCount?`已合并 ${result.mergedCount} 条重复/同义验证，现有 ${state.rows.length} 条；引用标准、各来源条件/判据和附件已保留。`:'未发现可安全合并的重复验证项；不同产品、明确条件和执行记录保持独立。';return result.mergedCount;}
 
   function bind(){
     hostRef.querySelectorAll('[data-meta]').forEach(el=>el.addEventListener('input',()=>{state.meta[el.dataset.meta]=el.value;}));
-    hostRef.querySelectorAll('[data-product]').forEach(el=>el.addEventListener('change',()=>{state.selectedProducts=[...hostRef.querySelectorAll('[data-product]:checked')].map(x=>x.dataset.product);}));
-    hostRef.querySelectorAll('[data-standard]').forEach(el=>el.addEventListener('change',()=>{state.selectedStandards=[...hostRef.querySelectorAll('[data-standard]:checked')].map(x=>x.dataset.standard);}));
+    hostRef.querySelectorAll('[data-product]').forEach(el=>el.addEventListener('change',()=>{state.selectedProducts=[...hostRef.querySelectorAll('[data-product]:checked')].map(x=>x.dataset.product);if(el.checked){state.guideProduct=el.dataset.product;hostRef.querySelector('#dvGuideProduct').value=state.guideProduct;renderGuide();}updatePickerCounts();}));
+    hostRef.querySelectorAll('[data-standard]').forEach(el=>el.addEventListener('change',()=>{state.selectedStandards=[...hostRef.querySelectorAll('[data-standard]:checked')].map(x=>x.dataset.standard);updatePickerCounts();}));
+    hostRef.querySelectorAll('[data-expand-picker]').forEach(btn=>btn.addEventListener('click',()=>{const groups=[...hostRef.querySelectorAll(`[data-picker-group="${btn.dataset.expandPicker}"]`)];const expand=groups.some(group=>!group.open);groups.forEach(group=>{group.open=expand;});}));
+    hostRef.querySelectorAll('[data-dv-view]').forEach(btn=>btn.addEventListener('click',()=>setView(btn.dataset.dvView)));
+    hostRef.querySelector('#dvGuideProduct').addEventListener('change',e=>{state.guideProduct=e.target.value;renderGuide();});
+    hostRef.querySelector('#dvGuideContent').addEventListener('click',e=>{
+      const check=e.target.closest('[data-guide-check]');if(check){addGuideChecks(check.dataset.guideCheck);return;}
+      if(e.target.closest('[data-guide-add-all]')){addGuideChecks();return;}
+      if(e.target.closest('[data-guide-recommend]')){const guide=LIB.designGuides[state.guideProduct];state.selectedStandards=[...new Set([...state.selectedStandards,...guide.recommendedStandards])];if(!state.selectedProducts.includes(state.guideProduct))state.selectedProducts.push(state.guideProduct);render(hostRef);}
+    });
     hostRef.querySelector('#dvRecommend').addEventListener('click',selectRecommended);
     hostRef.querySelector('#dvGenerate').addEventListener('click',generateRows);
     hostRef.querySelector('#dvAddRow').addEventListener('click',()=>{state.rows.push(normalizeRow({productId:state.selectedProducts[0]||'',productName:product(state.selectedProducts[0])?.name||''}));renderRows();});
+    hostRef.querySelector('#dvMergeRows').addEventListener('click',consolidateRows);
     hostRef.querySelector('#dvClear').addEventListener('click',()=>{if(confirm('确定清空当前DVP&R工作区的全部条目吗？此操作不会清除已导出的JSON文件。')){state.rows=[];renderRows();}});
     hostRef.querySelector('#dvRows').addEventListener('input',onTableInput);
     hostRef.querySelector('#dvRows').addEventListener('change',onTableInput);
@@ -94,17 +151,15 @@
   function generateRows(){
     if(!state.selectedProducts.length){alert('请至少选择一种产品。');return;}
     if(!state.selectedStandards.length)selectRecommended();
-    const exists=new Set(state.rows.map(r=>r.sourceKey)); let added=0;
+    let added=0;
     state.selectedProducts.forEach(productId=>{
       const p=product(productId);
       (LIB.profiles[productId]||[]).forEach((test,index)=>{
-        const [testItem,standard,clause,sampleQty,preMeasure,environment,procedure,postMeasure,acceptance]=test;
-        if(!state.selectedStandards.includes(standard))return;
-        const sourceKey=`${productId}|${index}|${standard}|${testItem}`;if(exists.has(sourceKey))return;
-        state.rows.push(normalizeRow({sourceKey,productId,productName:p.name,testItem,standard,clause,sampleQty,preMeasure,environment,procedure,postMeasure,acceptance}));exists.add(sourceKey);added++;
+        if(!state.selectedStandards.includes(test[1]))return;
+        if(appendProfile(p,test,index))added++;
       });
     });
-    renderRows();alert(added?`已新增 ${added} 条验证项目。`:'没有新增条目：当前产品与标准组合已在工作区中。');
+    const merged=consolidateRows();alert(added||merged?`已补充 ${added} 条来源验证，合并 ${merged} 条重复项；当前共 ${state.rows.length} 条验证项目。`:'没有新增条目：当前产品与标准组合已在工作区中。');
   }
   function findRow(target){ const tr=target.closest('[data-row]');return tr?state.rows.find(r=>r.id===tr.dataset.row):null; }
   function onTableInput(event){ const row=findRow(event.target);const key=event.target.dataset.field;if(!row||!key)return;row[key]=event.target.value;if(key==='productId'&&row[key]){row.productName=product(row[key])?.name||row.productName;const nameInput=event.target.closest('td')?.querySelector('[data-field="productName"]');if(nameInput)nameInput.value=row.productName;} }
@@ -125,7 +180,7 @@
     const matrix=text.replace(/\r/g,'').split('\n').filter((line,i,a)=>line!==''||i<a.length-1).map(line=>line.split('\t'));
     matrix.forEach((values,ri)=>{while(state.rows.length<=rowIndex+ri)state.rows.push(normalizeRow({productId:state.rows[rowIndex]?.productId||'',productName:state.rows[rowIndex]?.productName||''}));values.forEach((value,ci)=>{const def=COLUMNS[colIndex+ci];if(def)state.rows[rowIndex+ri][def[0]]=value;});});renderRows();
   }
-  function exportJson(){download(new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'}),`${fileSafe(state.meta.projectName)}_DVPR.json`);}
+  function exportJson(){consolidateRows();download(new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'}),`${fileSafe(state.meta.projectName)}_DVPR.json`);}
   async function importJson(event){
     const file=event.target.files[0];if(!file)return;try{if(file.size>10*1024*1024)throw new Error('JSON 大小不能超过 10 MB');const parsed=window.ElectricalSafety.parseJson(await file.text(),{maxArrayLength:5000,validate:validImport});state=normalize(parsed);render(hostRef);alert(`已导入 ${state.rows.length} 条验证项目，附件已一并恢复。`);}catch(error){alert(`JSON导入失败：${error.message}`);}event.target.value='';
   }
@@ -134,7 +189,7 @@
     const record=(v,except=[])=>S.isPlainObject(v)&&Object.entries(v).every(([key,value])=>except.includes(key)||scalar(value));
     const strings=v=>Array.isArray(v)&&v.every(x=>typeof x==='string');
     const attachment=v=>record(v)&&typeof v.dataUrl==='string'&&/^data:[\w.+\/-]+;base64,[A-Za-z0-9+/]*={0,2}$/.test(v.dataUrl)&&(!/^data:image\//i.test(v.dataUrl)||S.validateImageDataUrl(v.dataUrl));
-    return S.isPlainObject(data)&&(data.meta==null||record(data.meta))&&(data.selectedProducts==null||strings(data.selectedProducts))&&(data.selectedStandards==null||strings(data.selectedStandards))&&Array.isArray(data.rows)&&data.rows.every(row=>record(row,['attachments'])&&(row.attachments==null||(Array.isArray(row.attachments)&&row.attachments.length<=100&&row.attachments.every(attachment))));
+    return S.isPlainObject(data)&&(data.meta==null||record(data.meta))&&(data.selectedProducts==null||strings(data.selectedProducts))&&(data.selectedStandards==null||strings(data.selectedStandards))&&Array.isArray(data.rows)&&data.rows.every(row=>record(row,['attachments','mergeSources'])&&(row.mergeSources==null||(Array.isArray(row.mergeSources)&&row.mergeSources.length<=1000&&row.mergeSources.every(source=>record(source)&&typeof source.testItem==='string'&&typeof source.standard==='string')))&&(row.attachments==null||(Array.isArray(row.attachments)&&row.attachments.length<=100&&row.attachments.every(attachment))));
   }
   function sheetRows(){
     const meta=state.meta;return [
@@ -145,6 +200,7 @@
   }
   function exportExcel(){
     if(!state.rows.length){alert('请先生成或添加至少一条验证项目。');return;}if(!window.XLSX){alert('Excel导出组件未加载。');return;}
+    consolidateRows();
     const wb=XLSX.utils.book_new(),ws=XLSX.utils.aoa_to_sheet(sheetRows());
     ws['!cols']=[{wch:6},{wch:18},{wch:22},{wch:18},{wch:25},{wch:10},{wch:24},{wch:28},{wch:28},{wch:24},{wch:32},{wch:14},{wch:14},{wch:14},{wch:14},{wch:22}];
     ws['!freeze']={xSplit:2,ySplit:5};ws['!autofilter']={ref:`A5:P${5+state.rows.length}`};ws['!merges']=[XLSX.utils.decode_range('A1:P1')];
@@ -156,10 +212,11 @@
     const m=state.meta;return `<article class="dv-report"><header><h1>DVP&amp;R 设计验证计划与报告</h1><p>${esc(m.projectName)} · ${esc(m.partName)} · ${esc(m.partNo)}</p></header><table class="dv-report-meta"><tr><th>阶段</th><td>${esc(m.phase)}</td><th>版本</th><td>${esc(m.revision)}</td><th>编制人/日期</th><td>${esc(m.preparedBy)} / ${esc(m.preparedDate)}</td></tr></table><p class="dv-report-note"><b>注意：</b>相近标准不代表等效互认；试验条件、样品数量与判据须按项目受控版本复核。</p><table class="dv-report-table"><thead><tr><th>序号/产品</th>${COLUMNS.map(([,label])=>`<th>${label}</th>`).join('')}</tr></thead><tbody>${state.rows.map((r,i)=>`<tr><td>${i+1}<br>${esc(r.productName||product(r.productId)?.name||'')}</td>${COLUMNS.map(([key])=>`<td>${key==='reportNo'?`${esc(r.reportNo)}${(r.attachments||[]).length?`<br>附件：${r.attachments.map(f=>esc(f.name)).join('；')}`:''}`:esc(r[key])}</td>`).join('')}</tr>`).join('')}</tbody></table><h2>标准映射说明</h2>${LIB.mappings.map(m=>`<p><b>${m.systems.map(esc).join(' ↔ ')}：</b>${esc(m.note)}</p>`).join('')}</article>`;
   }
   function exportPdf(){
-    if(!state.rows.length){alert('请先生成或添加至少一条验证项目。');return;}const shell=hostRef.querySelector('#dvPrintShell');shell.innerHTML=reportHtml();shell.classList.add('active');const parent=shell.parentNode,next=shell.nextSibling;document.body.appendChild(shell);const oldTitle=document.title;document.title=`${fileSafe(state.meta.projectName)}_DVPR`;const restore=()=>{document.title=oldTitle;shell.classList.remove('active');parent.insertBefore(shell,next);window.removeEventListener('afterprint',restore);};window.addEventListener('afterprint',restore);setTimeout(()=>window.print(),150);
+    if(!state.rows.length){alert('请先生成或添加至少一条验证项目。');return;}consolidateRows();const shell=hostRef.querySelector('#dvPrintShell');shell.innerHTML=reportHtml();shell.classList.add('active');const parent=shell.parentNode,next=shell.nextSibling;document.body.appendChild(shell);const oldTitle=document.title;document.title=`${fileSafe(state.meta.projectName)}_DVPR`;const restore=()=>{document.title=oldTitle;shell.classList.remove('active');parent.insertBefore(shell,next);window.removeEventListener('afterprint',restore);};window.addEventListener('afterprint',restore);setTimeout(()=>window.print(),150);
   }
 
   function styles(){return `
+    #dvPlanPage[hidden],#dvGuidePage[hidden]{display:none!important}.dv-tabs{display:flex;gap:8px;margin:12px 0}.dv-picker-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-top:12px}.dv-picker-heading h4{margin:0}.dv-picker-heading .btn{padding:5px 9px;font-size:12px}.dv-picker-groups{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:7px}.dv-picker-group{border:1px solid #cbd5e1;min-width:0;align-self:start}.dv-picker-group summary{cursor:pointer;padding:9px 12px;background:#edf2f6;font-size:13px}.dv-picker-group summary span{float:right;font-size:11px;color:#64748b}.dv-picker-group[open]{grid-column:1/-1}.dv-picker-group .dv-products,.dv-picker-group .dv-standards{padding:8px;grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}.dv-selection-note{font-size:12px;color:#64748b;margin:10px 0 0}.dv-guide-select{display:grid;gap:6px;max-width:450px;margin:14px 0;font-weight:700}.dv-guide-select select{width:100%;min-width:0}.dv-guide-note{padding:12px;border-left:3px solid #2f6e88;background:#eef4f8}.dv-guide-note p{margin:6px 0;font-size:13px}.dv-guide-note small{color:#64748b}.dv-guide-standards{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:6px}.dv-guide-standards a{display:grid;gap:4px;border-bottom:1px solid #cbd5e1;padding:8px;color:#174b69;text-decoration:none}.dv-guide-standards a span{font-size:12px;color:#64748b}.dv-guide-actions{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0}.dv-guide-table-wrap{overflow:auto}.dv-guide-table{width:100%;min-width:850px;border-collapse:collapse;font-size:13px;line-height:1.6}.dv-guide-table th,.dv-guide-table td{border:1px solid #cbd5e1;padding:10px;text-align:left;vertical-align:top}.dv-guide-table th{background:#e6eef5}.dv-guide-table th:first-child{width:18%}.dv-guide-table th:last-child{width:90px}.dv-guide-table small{display:block;color:#64748b;margin-top:5px}.dv-guide-table button{white-space:nowrap}.dv-guide-table .btn{padding:6px 9px}.dv-tabs button:focus-visible,.dv-picker-group summary:focus-visible{outline:2px solid #2f6e88;outline-offset:2px}@media(max-width:700px){.dv-picker-groups{grid-template-columns:1fr}.dv-picker-group summary{padding:9px}.dv-picker-heading{align-items:flex-start;flex-wrap:wrap}.dv-guide-standards{grid-template-columns:1fr}.dv-guide-table-wrap{max-width:100%}}
     .dv-hero,.dv-head{display:flex;justify-content:space-between;align-items:flex-start;gap:18px}.dv-hero{background:linear-gradient(135deg,#fff 50%,#eaf3f8);border-left:4px solid #173b5e}.dv-hero span{font-size:11px;letter-spacing:.12em;color:#2f6e88;font-weight:800}.dv-hero h3{font-size:25px;margin:4px 0}.dv-hero p,.dv-head p{margin:3px 0;color:var(--text-muted)}.dv-actions,.dv-head>div:last-child{display:flex;gap:7px;flex-wrap:wrap}.dv-warning{border-left:4px solid #b7791f;background:#fff8e8}.dv-warning p{margin:4px 0 0}.dv-meta{display:grid;grid-template-columns:repeat(4,minmax(150px,1fr));gap:10px}.dv-meta label{display:grid;gap:4px}.dv-meta span{font-size:12px;font-weight:700}.dv-products,.dv-standards{display:grid;grid-template-columns:repeat(4,minmax(180px,1fr));gap:7px}.dv-products label,.dv-standards label{display:flex;gap:8px;align-items:flex-start;border:1px solid #cbd5e1;padding:8px;background:#fff}.dv-standards label.dv-internal-standard{border:2px solid #b7791f;background:#fffbeb}.dv-products input,.dv-standards input{width:auto;margin-top:3px}.dv-products span,.dv-standards span{display:grid;min-width:0}.dv-products small,.dv-standards small{color:#64748b;font-size:10px;overflow:hidden;text-overflow:ellipsis}.dv-mappings{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.dv-mappings article{position:relative;border:1px solid #cbd5e1;padding:12px;background:#fff}.dv-mappings article>b,.dv-mappings article>span{display:block}.dv-mappings article>span{margin-top:5px}.dv-mappings article p{font-size:12px;color:#64748b;margin-bottom:0}.dv-mappings em{position:absolute;top:8px;right:8px;color:#b42318;background:#fee2e2;padding:2px 6px;font-style:normal;font-size:10px}.dv-table-wrap{overflow:auto;max-height:70vh;border:1px solid #94a3b8;margin-top:10px}.dv-table{border-collapse:separate;border-spacing:0;min-width:3050px;background:#fff}.dv-table th,.dv-table td{border-right:1px solid #cbd5e1;border-bottom:1px solid #cbd5e1;vertical-align:top}.dv-table th{position:sticky;top:0;z-index:2;background:#e6eef5;padding:7px;font-size:11px;min-width:150px}.dv-table th:nth-child(1){min-width:170px}.dv-table th:nth-child(2){min-width:180px}.dv-table th:nth-child(4){min-width:230px}.dv-table th:nth-child(5){min-width:75px}.dv-table th:nth-child(6),.dv-table th:nth-child(9){min-width:210px}.dv-table th:nth-child(7),.dv-table th:nth-child(8),.dv-table th:nth-child(10){min-width:260px}.dv-table th:nth-child(15){min-width:230px}.dv-table th:last-child{position:sticky;right:0;z-index:3;min-width:105px}.dv-table td:last-child{position:sticky;right:0;background:#fff}.dv-table textarea,.dv-table input,.dv-table select{width:100%;min-width:0;border:0;border-radius:0;min-height:58px;padding:7px;background:#fff;resize:vertical}.dv-table input[type=date],.dv-table input[data-field=sampleQty],.dv-table select{min-height:38px}.dv-product-cell{padding:4px}.dv-product-cell input,.dv-product-cell select{min-height:35px}.dv-op{padding:5px;display:flex;gap:3px}.dv-op button,.dv-files button{cursor:pointer}.dv-files{display:grid;gap:3px;padding:4px}.dv-files span{font-size:10px;background:#edf2f7;padding:3px}.dv-files label{font-size:11px;color:#175d7b;cursor:pointer}.dv-files input{display:none}.dv-empty{text-align:center;padding:30px!important;color:#64748b}.danger{color:#b42318;border-color:#e5a8a8}.dv-print-shell{display:none}
     @media(max-width:900px){.dv-hero,.dv-head{flex-direction:column}.dv-meta,.dv-products,.dv-standards,.dv-mappings{grid-template-columns:1fr}}
     @media print{@page{size:A4 landscape;margin:8mm}html,body{height:auto!important;min-height:0!important;background:#fff!important}body>*:not(.dv-print-shell){display:none!important}.dv-print-shell.active{display:block!important;color:#111!important;font-family:'Microsoft YaHei',Arial,sans-serif}.dv-report{font-size:6.5pt}.dv-report header{border-bottom:2px solid #173b5e;margin-bottom:3mm}.dv-report h1{font-size:16pt;margin:0}.dv-report header p{font-size:9pt}.dv-report table{width:100%;border-collapse:collapse;table-layout:fixed}.dv-report th,.dv-report td{border:1px solid #777;padding:1mm;vertical-align:top;word-break:break-word;white-space:pre-wrap}.dv-report th{background:#e8eef3}.dv-report-meta{font-size:8pt}.dv-report-note{border-left:3px solid #b7791f;padding:2mm;background:#fff7df}.dv-report-table{font-size:5.8pt}.dv-report-table th:nth-child(1){width:7%}.dv-report-table th:nth-child(5),.dv-report-table th:nth-child(11),.dv-report-table th:nth-child(12),.dv-report-table th:nth-child(13){width:4%}.dv-report-table tr{break-inside:avoid}.dv-report h2{font-size:10pt;margin:4mm 0 1mm}}

@@ -31,7 +31,7 @@
   }
   function card(item) {
     return `<article class="sl-card" data-no="${esc(item.no)}"><div class="sl-card-top"><div><span class="sl-system sl-${item.system.toLowerCase()}">${esc(item.system)}</span><span class="sl-topic">${esc(item.topic)}</span></div><span class="sl-status${item.status === '已废止' ? ' old' : ''}">${esc(item.status)}</span></div>
-      <h3>${esc(item.no)}</h3><h4>${esc(item.title)}</h4><p class="sl-level">适用层级：${esc(item.level)}</p><p class="sl-summary">${esc(item.summary)}</p>
+      <h3>${esc(item.no)}</h3><h4>${esc(item.title)}</h4><p class="sl-level">适用层级：${esc(item.level)}${item.verifiedAt?` · 题录复核 ${esc(item.verifiedAt)}`:''}</p><p class="sl-summary">${esc(item.summary)}</p>
       <div class="sl-tags">${item.focus.map((tag) => `<span>${esc(tag)}</span>`).join('')}</div>
       <div class="sl-card-actions"><button type="button" class="btn btn-ghost btn-sm" data-copy="${esc(item.no)}">复制标准号</button><a class="btn btn-ghost btn-sm" href="${esc(item.source)}" target="_blank" rel="noopener noreferrer">${sourceName(item.system)} ↗</a></div></article>`;
   }
@@ -51,7 +51,7 @@
   function render(host) {
     hostRef = host;
     host.innerHTML = `<style>${styles()}</style>
-      <section class="panel sl-intro"><div><span class="sl-eyebrow">STANDARD NAVIGATOR · OFFLINE INDEX</span><h3>动力电池与车辆电气标准库</h3><p>收录标准题录、适用层级和工程摘要，不复制标准正文。标准状态复核至 <b>${esc(DATA.verifiedAt)}</b>；立项、定版或认证前请在发布机构官网再次核验。</p></div><div class="sl-stat"><strong>${DATA.records.filter((item) => item.status !== '已废止').length}</strong><span>项现行/已发布标准</span></div></section>
+      <section class="panel sl-intro"><div><span class="sl-eyebrow">STANDARD NAVIGATOR · OFFLINE INDEX</span><h3>动力电池与车辆电气标准库</h3><p>收录标准题录、适用层级和工程摘要，不复制标准正文。原库复核日期 <b>${esc(DATA.verifiedAt)}</b>${DATA.partDesignVerifiedAt?`；零件设计专题题录复核 <b>${esc(DATA.partDesignVerifiedAt)}</b>`:''}；立项、定版或认证前请在发布机构官网再次核验。</p></div><div class="sl-stat"><strong>${DATA.records.filter((item) => item.status !== '已废止').length}</strong><span>项标准 / 受控规范索引</span></div></section>
       <section class="panel sl-guide"><h3>如何使用这份索引</h3><div><p><b>电芯/电池包选型：</b>先看性能与安全，再叠加运输、整车和目标市场法规。</p><p><b>换电设计：</b>同时检查车辆、电池箱、连接器、锁止机构、换电站和通信边界。</p><p><b>高压架构：</b>把电安全、绝缘配合、功能安全、EMC和环境可靠性分开建需求矩阵。</p><p><b>连接器选型：</b>区分车载/充电、HV/LV、配合/非配合状态，并确认温升、IP、寿命和互锁条件。</p><p><b>德国LV体系：</b>LV 214/215是联合供货规范基础，正式定版必须取得目标OEM当前企业版、试验矩阵及偏差清单。</p><p><b>北美USCAR体系：</b>USCAR-2是通用验证基础，再按压接、高压、RF/同轴、USB或焊接工艺叠加专项规范及最新修订信。</p></div></section>
       <section class="panel sl-filter"><div class="sl-search"><label for="slQuery">搜索标准号、名称、摘要或关键词</label><input id="slQuery" value="${esc(state.query)}" placeholder="例如：38031、换电、热扩散、连接器、ISO 6469"></div>
         <label>主题<select id="slTopic">${options(['全部',...unique('topic')], state.topic)}</select></label>

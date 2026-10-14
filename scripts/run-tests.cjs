@@ -4,11 +4,15 @@ const { spawnSync } = require('node:child_process');
 
 const groups = Object.freeze({
   browser: [
+    'tests/busbar-chart-browser.cjs',
+    'tests/rlc-browser.cjs',
     'tests/bolt-print-layout.cjs',
     'tests/bolt-suite.cjs',
     'tests/dfmea-browser.cjs',
     'tests/drafts-and-report.cjs',
     'tests/dvpr-browser.cjs',
+    'tests/dvpr-design-guide.cjs',
+    'tests/dvpr-merge-browser.cjs',
     'tests/dvpr-internal-database.cjs',
     'tests/english-reports.cjs',
     'tests/formula-regression.cjs',
@@ -27,6 +31,9 @@ const groups = Object.freeze({
     'tests/busbar-merged.cjs',
     'tests/dfmea.cjs',
     'tests/standards-data.cjs',
+    'tests/part-design-data.cjs',
+    'tests/dvpr-merge.cjs',
+    'tests/rlc-core.cjs',
   ],
 });
 

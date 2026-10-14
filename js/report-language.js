@@ -2,6 +2,7 @@
 (function () {
   'use strict';
   const phrases = {
+    '电池包RLC校核报告': 'Battery Pack RLC Verification Report',
     '导体电阻校核报告': 'Conductor Resistance Verification Report',
     '电池包外短与继电器/保险丝保护配合校核报告': 'Battery Short-Circuit and Relay/Fuse Coordination Report',
     '电池包保护配合校核报告': 'Battery Protection Coordination Report',

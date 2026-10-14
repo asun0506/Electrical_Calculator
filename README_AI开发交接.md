@@ -27,6 +27,9 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 | `js/report-language.js` | 报告中固定模板文字的语言转换，不翻译插入的用户数据 |
 | `js/calc-*.js` | 各模块 UI、业务计算、交互及导出；当前是否启用由入口决定 |
 | `js/*-data.js`、`js/*-requirements.js` | 静态材料、估价、标准、DV、DFMEA、SOR 模板及需求底库 |
+| `js/part-design-data.js` | 零件设计专题题录、产品类别和设计校核模板；同时供标准库及DVP使用 |
+| `js/dvpr-merge.js` | DVP 同义项目合并纯函数；保留来源、不同条件、人工编辑与附件 |
+| `js/rlc-core.js` | 直段电感、低频R/L网络等效、直流短路响应及电容储能的纯函数 |
 | `js/schematic/` | 原理图模型、几何、路由纯函数层 |
 | `js/vendor/` | 离线 XLSX、JSZip、docx-preview 与许可说明；不要手改压缩库 |
 | `scripts/` | 测试调度、SOR 模板生成、内部 DV 数据生成 |
@@ -45,7 +48,7 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 | ID | 功能 | 首要源码/数据 | 接手重点 |
 | --- | --- | --- | --- |
 | `relay-fuse` | 电池包等效内阻、最大外短电流、继电器/保险丝保护曲线配合 | `js/calc-relay-fuse.js` | 多电阻段尺寸/定值、数量串并联、组合表达式、曲线和人工校核分析；JSON 与中英文 PDF |
-| `conductor` | 导体电阻网络与限值校核 | `js/calc-conductor.js` | 温度、材料、尺寸、数量串并联、表达式、附图、显示单位；JSON 与中英文报告 |
+| `conductor` | 电池包RLC校核（保留原电阻模块ID） | `js/calc-conductor.js`、`js/rlc-core.js` | 电阻网络/限值、直段电感及手动覆盖、RL短路响应、Y/寄生电容与接触路径能量；JSON schema 3兼容旧项目，中英文报告 |
 | `precharge` | 预充电阻、时间常数、峰值电流及现有电阻校核 | `js/calc-precharge.js` | RC 模型、时间/目标比例输入、单位与边界 |
 | `bend-radius` | 导线/线束折弯半径 | `js/calc-bend-radius.js` | 动态行、线束尺寸与系数；恢复草稿时重建行 |
 | `tolerance` | 尺寸链、公差计算 | `js/calc-tolerance.js` | 增减环、正负方向、公差合成；不要与 IEC 层级校核的独立模型混用 |
@@ -59,7 +62,7 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 | `engineering-formulas` | 常见工程公式知识页 | `js/calc-engineering-formulas.js` | 数学、力学、电学、热学分页面，符号/单位/适用说明和相图示意 |
 | `standards-library` | 动力电池与车辆电气标准库 | `js/calc-standards-library.js`、`js/standards-data.js`、`js/standards-dvpr-supplement.js` | 题录、摘要、标签、状态、组合筛选、历史版本和官方入口；包括 LV/USCAR |
 | `part-estimator` | 汽车零件模块化估价 | `js/calc-part-estimator.js`、`js/estimator-data.js` | 项目/零件、材料/工序/包材、模板与排序；JSON/Excel、成本边界、历史数据归一化 |
-| `dvpr` | DVP&R 验证计划与报告 | `js/calc-dvpr.js`、`js/dvpr-data.js`、`js/dvpr-internal-data.js` | 按产品/标准生成可编辑验证矩阵，附件、JSON、Excel/PDF；区分内部 DV 底库与公开标准来源 |
+| `dvpr` | DVP&R 验证计划、报告与零件设计指南 | `js/calc-dvpr.js`、`js/dvpr-data.js`、`js/dvpr-internal-data.js`、`js/part-design-data.js` | 产品/标准分类折叠、38类产品设计指南与关联验证项、附件、JSON、Excel/PDF；区分内部 DV 底库与公开标准来源 |
 | `schematic` | 电气原理图生成器 | `js/calc-schematic.js`、`js/schematic/*.js` | 组件、连接器、器件、Pin、线路/分支、SVG/PDF/JSON；详见第 7 节 |
 | `dfmea` | DFMEA 生成器 | `js/calc-dfmea.js`、`js/dfmea-data.js`、`js/dfmea-requirements.js`、`js/dfmea-template-data.js` | 系统与部件两级，子零件分析整合在部件行，筛选/编辑与原 Excel 模板导出 |
 | `sor-generator` | SOR 原版 Word 模板生成器 | `js/calc-sor-generator.js`、`js/sor-template-data.js` | 模板字段、动态表格、图片/附件、JSON、保留原 OOXML 的 DOCX、A4 打印预览 |
@@ -71,7 +74,7 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 - 导体与电池包电阻：温度修正后的电阻率参与 `R = ρ(T)L/A`，数量串联为 `nR`、并联为 `R/n`；复杂组合表达式要继续保持受限解析，不能引入 `eval`。理想外短电流为 `U/R`，零/负/无效电阻不能成为有效结果。
 - 保护配合的厂家曲线和人工分析保留原始语义；不要恢复已移除的“自动匹配结论”，或把理想外短电流当成完整瞬态短路仿真。
 - 预充：`τ = RC`，目标比例 `f` 的时间为 `-RC ln(1-f)`；`f = 1` 不是有限时间可达的有效输入。换算 µF、ms 等显示单位后再计算。
-- RMS 整合页按 Map 的真实时间跨度积分，不假定首个时间为 0；重复时间、非有效数据、线径向上取整及零电流冷却需要保留既有行为。
+- RMS 整合页按 Map 的真实时间跨度积分，不假定首个时间为 0；重复时间、非有效数据、线径向上取整及零电流冷却需要保留既有行为。电流–时间曲线参考线显示 RMS 有效电流，平均电流仅保留在综合结果中；电流/温升图表名称可自定义并随通用表单草稿保存，留空使用默认名称。
 - IEC 的每条尺寸链独立选择 `rss3`、`rss4`、`rss6` 或 `worst`；缺省 `rss3`，最小尺寸使用当前选中的公差。轮廓度/位置度与普通尺寸公差的折算规则不同，不能简单统一。三级校核项目 schema 为 1。
 - 材料、密封、线束、卡扣、螺栓和估价的公式/经验参数各有适用条件。变更应给出单位、依据、边界和独立预期结果；不得只用新实现反推测试答案。
 - 估价中的价格、用量、利用率、回收折价率和良率保留有效范围约束；金额与材料原始数据不因报告语言切换而改变。
@@ -198,10 +201,11 @@ pnpm test:browser
 | 安全与导入边界 | `tests/safety.cjs`、`tests/import-safety-browser.cjs`，后者使用共享 helpers |
 | 存储、迁移和大附件 | `tests/storage.cjs`、`tests/drafts-and-report.cjs` |
 | 计算公式 | `tests/formula-regression.cjs`、`tests/fixtures/formula-cases.json`，22 个独立核验案例；新增公式需扩展适当案例 |
-| RMS/线径/温升 | `tests/busbar-merged.cjs` 与公式回归 |
+| 电池包RLC | `tests/rlc-core.cjs`、`tests/rlc-browser.cjs`；另保留原conductor公式、报告及导入测试 |
+| RMS/线径/温升 | `tests/busbar-merged.cjs`、`tests/busbar-chart-browser.cjs`（RMS 参考线、名称及草稿）与公式回归 |
 | 螺栓综合与打印 | `tests/bolt-suite.cjs`、`tests/bolt-print-layout.cjs` |
 | 标准库 | `tests/standards-data.cjs`、`tests/standards-library.cjs` |
-| DVP&R | `tests/dvpr-browser.cjs`、`tests/dvpr-internal-database.cjs` |
+| DVP&R | `tests/dvpr-browser.cjs`、`tests/dvpr-internal-database.cjs`、`tests/dvpr-design-guide.cjs`、`tests/part-design-data.cjs`、`tests/dvpr-merge.cjs`、`tests/dvpr-merge-browser.cjs` |
 | DFMEA | `tests/dfmea.cjs`、`tests/dfmea-browser.cjs` |
 | 英文报告 | `tests/english-reports.cjs` |
 | 原理图纯模型/几何/路由 | `tests/schematic-core.cjs` |
@@ -242,6 +246,10 @@ pnpm test:browser
 出现上线问题可在 Cloudflare 部署记录回退，代码侧通过有审查的修复或 revert 保持一致；不强推重写共享主分支。
 
 已有文档：
+
+- [电池包RLC模型说明](docs/电池包RLC校核模型说明.md)：电感依据、网络/短路模型、单位、Y/寄生电容和单故障储能范围。
+
+- [零件标准与设计指南维护说明](docs/零件标准与设计指南维护说明.md)：2026-10-13专题来源、适用范围、共享模型和DVP联动。
 
 - [本地使用说明](README_本地使用说明.txt)：面向用户。
 - [开发维护说明](README_开发维护说明.md)：较长的版本记录与功能演进。

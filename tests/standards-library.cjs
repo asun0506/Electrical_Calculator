@@ -39,7 +39,7 @@ let browser;
   assert.equal(await page.locator('.sl-card', { hasText:'SAE/USCAR-37' }).count(), 1, 'USCAR high-voltage supplement is present');
   await page.locator('#slSystem').selectOption('全部');
   const hrefs = await page.locator('.sl-card-actions a').evaluateAll((links) => links.map((a) => a.href));
-  assert.ok(hrefs.every((href) => /^https:\/\/(openstd\.samr\.gov\.cn|www\.iso\.org|webstore\.iec\.ch|unece\.org|www\.dakks\.de|www\.edag\.com|uscar\.org|www\.astm\.org|www\.shopulstandards\.com|shop\.ipc\.org)\//.test(href)), 'all sources are official publishers, industry bodies, or accredited scope indexes');
+  assert.ok(hrefs.every((href) => /^https:\/\/(openstd\.samr\.gov\.cn|www\.iso\.org|webstore\.iec\.ch|unece\.org|www\.dakks\.de|www\.edag\.com|uscar\.org|www\.astm\.org|www\.shopulstandards\.com|shop\.ipc\.org|www\.electronics\.org|shop\.electronics\.org)\//.test(href)), 'all sources are official publishers, industry bodies, or accredited scope indexes');
   assert.deepEqual(errors, []);
   await page.screenshot({ path:path.join(root,'tmp','standards-library-qa.png'), fullPage:true });
   await browser.close(); console.log(`PASS standards library: ${total} records`);
