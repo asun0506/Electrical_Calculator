@@ -1,6 +1,6 @@
 # 电气工程师计算器：完整开发与 AI 协作交接
 
-更新日期：2026-10-13。运行版本：v2.0.0（`index.html` 与 `package.json`）；本文核对的功能基线：`b7e8faf`。本文覆盖整个项目，不只是原理图。后续源码变更时应同步更新本文；遇到差异，以当前入口装配、源码和测试为准。
+更新日期：2026-10-14。运行版本：v2.1.0（`index.html` 与 `package.json`）；本文核对的功能基线：`d7f678d`，另包含本次版本及文档整理。本文覆盖整个项目，不只是原理图；开发、架构和发布说明统一在此维护，版本变更统一记入 [CHANGELOG.md](CHANGELOG.md)。遇到差异，以当前入口装配、源码和测试为准。
 
 ## 1. 接手前先知道这些
 
@@ -136,6 +136,8 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 
 生成底库的脚本不是日常运行命令：`scripts/build_sor_template.py` 需要输入 DOCX 与 `lxml`；`scripts/build-dvpr-internal-data.py` 需要输入工作簿与 `openpyxl`。拿不到原始受控文件时不要编造或重建原始模板；先阅读脚本的参数及输出路径再执行。
 
+估价底库 `window.PART_ESTIMATOR_DATA` 含 `materials / processes / packaging / processTemplates`，来源参考 `docs/超级估价模板_工序组合扩充版.xlsx`。页面单价、工时、折旧、人工、良率等调整仅写项目，不回写底库。新增模块继续使用独立 DOM ID 与本地工程主题，不引入 CDN、在线字体或构建依赖。
+
 ## 7. 原理图专题：模型和交互约定
 
 原理图核心通过经典脚本暴露 `window.ElectricalSchematic.model/geometry/routing`，也可 CommonJS 导入供 Node 测试。UI 位于 `js/calc-schematic.js`。纯函数层接收显式状态；模型工厂使用显式 ID 源、时钟和可选网格元数据，避免隐藏的 DOM/全局项目依赖。
@@ -184,6 +186,10 @@ pnpm test
 ```
 
 测试调度真相来源是 `scripts/run-tests.cjs`。语法检查跳过 vendor、node_modules、.git、.worktrees、output、tmp。没有应用 build 命令，不要把 `pnpm build` 当成必须步骤。
+
+公式回归夹具 `tests/fixtures/formula-cases.json` 为 schema 1，每例记录 module、inputs、expected、absoluteTolerance、source、caseType；无效输入记录验证类别和提示片段。测试先独立复算，再以 file:// 打开页面验证，选择器集中在测试 adapters。可用 `node tests/formula-regression.cjs precharge` 只测预充页面，但夹具契约与独立复算仍检查全部案例。
+
+既有显示精度容差：三位小数 0.0005、导体六位小数 0.0000005、公差四位小数 0.00005；夹具独立复算另按 1e-8。新增案例注明独立公式或标准表来源，不抄页面答案、不扩大容差掩盖差异。模型基线包括预充全充能量 CV²/2、汇流排恒流热平衡与零电流冷却、IEC 本地 F.2/F.5/海拔表及向上取档约定；不是产品认证。
 
 多数浏览器测试默认使用 Windows Chrome：`C:\Program Files\Google\Chrome\Application\chrome.exe`，支持 `CHROME_PATH`；多数测试支持 `PLAYWRIGHT_MODULE` 指向替代模块路径。公式测试可使用 Playwright 自带 Chromium，需要时执行 `pnpm exec playwright install chromium`。
 
@@ -241,7 +247,13 @@ pnpm test:browser
 
 既定 Cloudflare Pages 配置：Production branch `main`，Framework preset None，Build command 留空，Build output directory `.`，Root directory 仓库根目录。所有页面资源使用相对路径；改动 JS/CSS 时核对入口缓存版本参数及线上实际资源更新。新增目录发布前核查是否含不应公开的数据。
 
-此配置来自项目发布说明；仓库没有 `.github/` 工作流，本文没有核验 Cloudflare 账号实时设置或部署日志。若团队增加 CI，建议分别运行语法、unit、browser，并显式解决上述浏览器路径适配。
+此配置为既定发布方案；仓库没有 `.github/` 工作流，本文没有核验 Cloudflare 账号实时设置或部署日志。若团队增加 CI，建议分别运行语法、unit、browser，并显式解决上述浏览器路径适配。
+
+日常发布：本地修改 → 检查差异与敏感数据 → 运行适当测试 → 按获授权的分支/PR 流程提交并推送 → 查看 Cloudflare 部署结果 → 在正式网址复查导航、计算、图片及导入导出。首次连接仓库时使用上面的无构建配置。推送不等于已经部署成功。
+
+打包或发布前保留完整目录结构与第三方许可证，核对入口引用资源存在，并验证 file:// 离线运行和所有导航。估价改动额外检查材料/工序/包材、模板、拖拽排序、清空确认与 JSON/Excel 往返。发布文件都可被访问者读取，不能包含密码、令牌、私人附件或机密底库。
+
+产品版本更新时同步 `package.json`、`index.html`、README 和本文，并在 CHANGELOG 添加日期、功能及兼容性说明。资源缓存版本与 JSON schema 各有独立语义，不机械改为产品版本；本次 2.1.0 不迁移存储键或重置用户草稿。pnpm 锁文件记录依赖而非根产品版本，依赖不变无需重写锁文件。
 
 出现上线问题可在 Cloudflare 部署记录回退，代码侧通过有审查的修复或 revert 保持一致；不强推重写共享主分支。
 
@@ -251,14 +263,13 @@ pnpm test:browser
 
 - [零件标准与设计指南维护说明](docs/零件标准与设计指南维护说明.md)：2026-10-13专题来源、适用范围、共享模型和DVP联动。
 
-- [本地使用说明](README_本地使用说明.txt)：面向用户。
-- [开发维护说明](README_开发维护说明.md)：较长的版本记录与功能演进。
-- [代码审查与架构说明](代码审查与架构说明.md)：历史架构审查；其中“唯一入口为旧 HTML”“未引入 npm”“只用 localStorage”等描述已经过时，应结合本文和当前源码。
-- [发布维护说明](发布维护说明.md)：既定托管流程。
+- [README](README.md)：使用、备份与文档入口，已合并原本地使用说明。
+- [修改日志](CHANGELOG.md)：统一版本记录，保留原开发维护和早期架构审查的有效历史内容。
+- 本文：唯一当前开发/架构/发布总说明；原四份重复说明已合并移除。历史 specs/plans 中的旧文件路径及 v2.0.0 是当时设计记录，不作为当前文档链接或修改依据。
 - [基础加固设计](docs/superpowers/specs/2026-09-18-foundation-hardening-design.md)与[实施计划](docs/superpowers/plans/2026-09-18-foundation-hardening.md)：五项基础加固的背景及验收，不代表计划文件中的每句话都是当前代码。
 - [原理图编辑设计](docs/superpowers/specs/2026-09-21-schematic-editing-design.md)与[实施计划](docs/superpowers/plans/2026-09-21-schematic-editing.md)：前一轮编辑功能设计；后续线径标签和 Pin/中间点改进见当前源码和测试。
 
-本次功能基线的最近提交：`45f3e63` 添加器件 Pin 和中间点编辑，`b7e8faf` 修复删除中间点时保留主线。它们已在此前推送到 main。未有新的、用户已指定的功能待办；团队可以从明确 Issue 开始，不需要先重做架构或恢复已完成的五项加固。
+功能基线 `d7f678d` 已推送 main，包含 RMS 图表、标准/设计指南、DVP 去重和电池包 RLC；此前 `45f3e63`、`b7e8faf` 已完成 Pin/中间点编辑及主线保护。本次 2.1.0 另整理版本与文档；是否提交/推送以实际 Git 状态为准，不因文档写有版本号就视为线上已发布。接手不需要重做已完成的五项基础加固。
 
 快速交给新助手的提示词：
 
