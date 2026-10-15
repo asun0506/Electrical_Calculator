@@ -5,6 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>电气工程师计算器</title>
   <link rel="stylesheet" href="css/styles.css?v=1.4.1" />
+  <link rel="stylesheet" href="js/vendor/katex/katex.min.css?v=0.19.0" />
+  <link rel="stylesheet" href="css/math.css?v=1.0" />
 </head>
 <body>
   <div class="app">
@@ -24,7 +26,7 @@
 
       <footer class="sidebar-footer">
         <p class="sidebar-author">Author: Yongshang</p>
-        <p>工程版 v2.1.0 · 纯本地计算，数据不出浏览器</p>
+        <p>工程版 v2.1.1 · 纯本地计算，数据不出浏览器</p>
       </footer>
     </aside>
 
@@ -43,6 +45,8 @@
 
   <!-- 通用图表渲染器（可复用于各计算器） -->
   <script src="js/chart.js?v=1.8.2"></script>
+  <script src="js/vendor/katex/katex.min.js?v=0.19.0"></script>
+  <script src="js/math-render.js?v=1.0"></script>
 
   <!-- 各计算器模块（按注册表顺序加载） -->
   <script src="js/calc-relay-fuse.js?v=2.2"></script>
@@ -51,7 +55,8 @@
   <script src="js/calc-precharge.js?v=1.8.1"></script>
   <script src="js/calc-bend-radius.js?v=1.8.1"></script>
   <script src="js/calc-tolerance.js?v=1.8.1"></script>
-  <script src="js/calc-bolt-suite.js?v=2.0"></script>
+  <script src="js/bolt-torque-core.js?v=1.0"></script>
+  <script src="js/calc-bolt-suite.js?v=3.1"></script>
   <script src="js/calc-iec60664.js"></script>
   <script src="js/calc-iec60664-system.js?v=2.6"></script>
   <script src="js/calc-o-ring.js?v=1.8.1"></script>
@@ -61,7 +66,7 @@
   <script src="js/busbar-sample-data.js?v=1.0"></script>
   <script src="js/materials-data.js"></script>
   <script src="js/calc-materials.js?v=2.5"></script>
-  <script src="js/calc-engineering-formulas.js?v=1.1"></script>
+  <script src="js/calc-engineering-formulas.js?v=2.0"></script>
   <script src="js/standards-data.js?v=1.1"></script>
   <script src="js/standards-dvpr-supplement.js?v=1.0"></script>
   <script src="js/part-design-data.js?v=1.0"></script>

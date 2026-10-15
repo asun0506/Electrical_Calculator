@@ -2,6 +2,10 @@
 (function () {
   'use strict';
   const phrases = {
+    '项目/零件号':'Project / Part No.', '报告名称':'Report Name', '编制人/部门':'Prepared By / Department',
+    '编制日期':'Prepared Date', '版本':'Revision', '1. 校核汇总':'1. Verification Summary',
+    '2. 部件及连接界面明细':'2. Parts and Joint Details', '共 ':'Total ', ' 个部件、':' parts, ',
+    ' 个连接界面：':' joints: ', '，待完善 ':', pending ', '不通过':'FAIL', '通过':'PASS', '部件 ':'Part ',
     '电池包RLC校核报告': 'Battery Pack RLC Verification Report',
     '导体电阻校核报告': 'Conductor Resistance Verification Report',
     '电池包外短与继电器/保险丝保护配合校核报告': 'Battery Short-Circuit and Relay/Fuse Coordination Report',

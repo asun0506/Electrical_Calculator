@@ -1,0 +1,13 @@
+.math-formula{display:block;max-width:100%;overflow-x:auto;overflow-y:hidden;padding:5px 2px;color:inherit}
+.math-formula .katex-display{margin:.35em 0;text-align:left}
+.math-formula .katex-display>.katex{text-align:left;white-space:nowrap}
+.math-formula .katex{font-size:1.08em}
+.math-error{display:block;color:#b42318;white-space:pre-wrap;overflow-wrap:anywhere}
+.bt-equation{min-width:0;font-size:16px;line-height:1.5}
+.bt-formula-steps li>b{display:block;margin-bottom:8px;font-size:14px;color:#173b5e}
+.bt-math-mode{display:block;font-size:11px;color:#64748b;margin:0 0 5px}
+.bt-formula-steps .bt-equation+.bt-math-mode{margin-top:-5px}
+.bt-formula-main .math-formula{font-size:20px}
+@media(max-width:700px){.bt-equation{font-size:14px}.bt-formula-main .math-formula{font-size:16px}}
+@media print{.math-formula{overflow:visible;break-inside:avoid}.math-formula .katex{font-size:1em}}
+@media print{.bt-equation{font-size:9pt}.bt-formula-steps li>b{font-size:9pt}.bt-math-mode{font-size:7pt}.bt-formula-main .math-formula{font-size:12pt}}

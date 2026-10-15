@@ -1,0 +1,13 @@
+const assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path');
+const file=path.join(__dirname,'..','js','math-render.js');
+assert.ok(fs.existsSync(file),'shared offline LaTeX renderer must exist');
+const M=require(file);
+for(const [v,want] of [[5,'5.000'],[4.0010937369,'4.001'],[29.7986,'29.80'],[.2166666667,'0.2167'],[.0000123456,'0.00001235'],[123456,'1.235e+5'],[-0,'0.000']])assert.equal(M.significant(v),want);
+assert.equal(M.significant(NaN),'—');
+assert.equal(M.numberTex(123456),'1.235\\times 10^{5}');
+const fraction=M.render(String.raw`F=\frac{T}{L}`);
+assert.match(fraction,/<mfrac>/);assert.match(fraction,/class="katex/);
+assert.doesNotMatch(M.render(String.raw`\href{javascript:alert(1)}{click}`),/href="javascript:/);
+assert.doesNotMatch(M.render('<img src=x onerror=alert(1)>'),/<img/);
+assert.match(M.render(String.raw`\badUnknownCommand`),/math-error/);
+console.log('PASS four significant figures, scientific LaTeX, real fractions and safe rendering');

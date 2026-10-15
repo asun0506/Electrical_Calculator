@@ -1,6 +1,6 @@
 # 电气工程师计算器：完整开发与 AI 协作交接
 
-更新日期：2026-10-14。运行版本：v2.1.0（`index.html` 与 `package.json`）；本文核对的功能基线：`d7f678d`，另包含本次版本及文档整理。本文覆盖整个项目，不只是原理图；开发、架构和发布说明统一在此维护，版本变更统一记入 [CHANGELOG.md](CHANGELOG.md)。遇到差异，以当前入口装配、源码和测试为准。
+更新日期：2026-10-16。运行版本：v2.1.1（`index.html` 与 `package.json`）；在 v2.1.0 基线 `14febf3` 上汇总螺栓 Excel V3、四位有效数字与全离线 LaTeX 排版，详见 [CHANGELOG.md](CHANGELOG.md)。本文覆盖整个项目，不只是原理图；开发、架构和发布说明统一在此维护。实际提交与部署状态以 Git 记录及 Cloudflare 部署结果为准。
 
 ## 1. 接手前先知道这些
 
@@ -52,7 +52,7 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 | `precharge` | 预充电阻、时间常数、峰值电流及现有电阻校核 | `js/calc-precharge.js` | RC 模型、时间/目标比例输入、单位与边界 |
 | `bend-radius` | 导线/线束折弯半径 | `js/calc-bend-radius.js` | 动态行、线束尺寸与系数；恢复草稿时重建行 |
 | `tolerance` | 尺寸链、公差计算 | `js/calc-tolerance.js` | 增减环、正负方向、公差合成；不要与 IEC 层级校核的独立模型混用 |
-| `bolt` | 螺栓连接综合校核 | `js/calc-bolt-suite.js` | 报告 → 部件 → 多连接界面，图片、JSON、中英文 A4 报告；当前项目 schema 为 2 |
+| `bolt` | 螺栓扭矩 / 界面综合校核 | `js/calc-bolt-suite.js`、`js/bolt-torque-core.js` | 仅 Excel V3 摩擦/螺距方法；LaTeX 逐步过程，四位有效数字显示、完整精度计算；项目 schema 3，旧 K 算法/工程不迁移；图片、JSON、中英文 A4 报告 |
 | `iec60664` | 电气间隙/爬电距离系统校核 | `js/calc-iec60664.js`、`js/calc-iec60664-system.js` | 标准数据内核 + 电芯/模组/PACK 层级；尺寸、图片、尺寸链、JSON、Word `.doc` 与 PDF |
 | `oring` | O 形圈密封尺寸 | `js/calc-o-ring.js` | 密封尺寸及压缩/填充相关计算，输入有效性 |
 | `snapfit` | 塑料卡扣 | `js/calc-snapfit.js` | 几何、材料与变形/受力条件，公式适用范围 |
@@ -67,7 +67,7 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 | `dfmea` | DFMEA 生成器 | `js/calc-dfmea.js`、`js/dfmea-data.js`、`js/dfmea-requirements.js`、`js/dfmea-template-data.js` | 系统与部件两级，子零件分析整合在部件行，筛选/编辑与原 Excel 模板导出 |
 | `sor-generator` | SOR 原版 Word 模板生成器 | `js/calc-sor-generator.js`、`js/sor-template-data.js` | 模板字段、动态表格、图片/附件、JSON、保留原 OOXML 的 DOCX、A4 打印预览 |
 
-`js/calc-rms-current.js` 和 `js/calc-bolt.js` 是保留的旧模块文件，当前入口不加载。不要把它们重新加载导致重复功能或 `bolt` ID 冲突。`iec60664` 是有意的特例：基础模块先注册，系统模块通过 `replace: true` 替换导航呈现。
+`js/calc-rms-current.js` 是保留的旧模块文件，当前入口不加载。旧 `js/calc-bolt.js` 及综合模块的 K 算法已经按用户要求删除，不要恢复。`iec60664` 是有意的特例：基础模块先注册，系统模块通过 `replace: true` 替换导航呈现。
 
 ### 电气与机械计算的业务边界
 
@@ -209,7 +209,8 @@ pnpm test:browser
 | 计算公式 | `tests/formula-regression.cjs`、`tests/fixtures/formula-cases.json`，22 个独立核验案例；新增公式需扩展适当案例 |
 | 电池包RLC | `tests/rlc-core.cjs`、`tests/rlc-browser.cjs`；另保留原conductor公式、报告及导入测试 |
 | RMS/线径/温升 | `tests/busbar-merged.cjs`、`tests/busbar-chart-browser.cjs`（RMS 参考线、名称及草稿）与公式回归 |
-| 螺栓综合与打印 | `tests/bolt-suite.cjs`、`tests/bolt-print-layout.cjs` |
+| 螺栓综合与打印 | `tests/bolt-torque-core.cjs`、`tests/bolt-torque-browser.cjs`、`tests/bolt-suite.cjs`、`tests/bolt-print-layout.cjs` |
+| LaTeX 与工程公式 | `js/math-render.js`、`css/math.css`、本地 `js/vendor/katex/`；`tests/math-render.cjs`、`tests/math-browser.cjs` 验证四位有效数字、安全渲染、全部 63 张公式卡和离线字体 |
 | 标准库 | `tests/standards-data.cjs`、`tests/standards-library.cjs` |
 | DVP&R | `tests/dvpr-browser.cjs`、`tests/dvpr-internal-database.cjs`、`tests/dvpr-design-guide.cjs`、`tests/part-design-data.cjs`、`tests/dvpr-merge.cjs`、`tests/dvpr-merge-browser.cjs` |
 | DFMEA | `tests/dfmea.cjs`、`tests/dfmea-browser.cjs` |
@@ -253,11 +254,13 @@ pnpm test:browser
 
 打包或发布前保留完整目录结构与第三方许可证，核对入口引用资源存在，并验证 file:// 离线运行和所有导航。估价改动额外检查材料/工序/包材、模板、拖拽排序、清空确认与 JSON/Excel 往返。发布文件都可被访问者读取，不能包含密码、令牌、私人附件或机密底库。
 
-产品版本更新时同步 `package.json`、`index.html`、README 和本文，并在 CHANGELOG 添加日期、功能及兼容性说明。资源缓存版本与 JSON schema 各有独立语义，不机械改为产品版本；本次 2.1.0 不迁移存储键或重置用户草稿。pnpm 锁文件记录依赖而非根产品版本，依赖不变无需重写锁文件。
+产品版本更新时同步 `package.json`、`index.html`、README 和本文，并在 CHANGELOG 添加日期、功能及兼容性说明。资源缓存版本与 JSON schema 各有独立语义，不机械改为产品版本；版本标签更新本身不迁移存储键或重置草稿。2.1.1 螺栓模块单独规定旧 K 工程不迁移，详见该模块说明。pnpm 锁文件记录依赖而非根产品版本，依赖不变无需重写锁文件。
 
 出现上线问题可在 Cloudflare 部署记录回退，代码侧通过有审查的修复或 revert 保持一致；不强推重写共享主分支。
 
 已有文档：
+
+- [螺栓扭矩校核模型说明](docs/螺栓扭矩校核模型说明.md)：用户 Excel 公式/单元格、默认参数、判定边界、原表差异、旧模型兼容和测试。
 
 - [电池包RLC模型说明](docs/电池包RLC校核模型说明.md)：电感依据、网络/短路模型、单位、Y/寄生电容和单故障储能范围。
 
@@ -269,7 +272,7 @@ pnpm test:browser
 - [基础加固设计](docs/superpowers/specs/2026-09-18-foundation-hardening-design.md)与[实施计划](docs/superpowers/plans/2026-09-18-foundation-hardening.md)：五项基础加固的背景及验收，不代表计划文件中的每句话都是当前代码。
 - [原理图编辑设计](docs/superpowers/specs/2026-09-21-schematic-editing-design.md)与[实施计划](docs/superpowers/plans/2026-09-21-schematic-editing.md)：前一轮编辑功能设计；后续线径标签和 Pin/中间点改进见当前源码和测试。
 
-功能基线 `d7f678d` 已推送 main，包含 RMS 图表、标准/设计指南、DVP 去重和电池包 RLC；此前 `45f3e63`、`b7e8faf` 已完成 Pin/中间点编辑及主线保护。本次 2.1.0 另整理版本与文档；是否提交/推送以实际 Git 状态为准，不因文档写有版本号就视为线上已发布。接手不需要重做已完成的五项基础加固。
+v2.1.0 基线 `14febf3` 已包含 RMS 图表、标准/设计指南、DVP 去重、电池包 RLC 及文档整理；此前 `45f3e63`、`b7e8faf` 已完成 Pin/中间点编辑及主线保护。v2.1.1 汇总 Excel V3 螺栓校核、旧 K 算法移除、四位有效数字与离线 LaTeX 排版，详见修改日志。是否提交/推送以实际 Git 状态为准，不因文档写有版本号就视为线上已部署。接手不需要重做已完成的五项基础加固。
 
 快速交给新助手的提示词：
 

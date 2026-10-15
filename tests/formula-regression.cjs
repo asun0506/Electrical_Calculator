@@ -85,13 +85,15 @@ function independentlyCalculate(item) {
       return { impulseKV, clearanceMm: 1.5 * altitudeFactor, creepageMm, altitudeFactor };
     }
     case 'bolt': {
-      assert.equal(i.size, 'M8');
-      assert.equal(i.material, '10.9');
-      assert.equal(i.kMode, 'dry');
-      const maxTorqueNm = i.torque * (1 + i.torqueTolerance / 100);
-      const preloadN = maxTorqueNm * 1000 / (.2 * 8);
-      const force = preloadN + i.load / i.quantity * (1 + i.acceleration / 9.81) * i.conditionFactor * i.vibrationFactor;
-      return { maxTorqueNm, preloadN, boltStressMpa: force / 36.6, contactStressMpa: 4 * force / (Math.PI * (i.outerDiameter ** 2 - i.innerDiameter ** 2)), allowableTorqueNm: .2 * .008 * .75 * 940 * 36.6 };
+      // Independent workbook equation, not an import from the application.
+      const pitch=i.pitch===''?({4:.7,5:.8,6:1,8:1.25,10:1.5}[i.diameter]):i.pitch;
+      const d2=i.diameter-.6495*pitch;
+      const arm=i.friction*(.577*d2+(i.outerDiameter+i.innerDiameter)/4)+pitch/(2*3.1415926);
+      const nominal=i.torque/arm,maxForceKn=nominal*(1+i.torqueTolerance/100);
+      const area=3.14*(i.outerDiameter**2-i.innerDiameter**2)/4;
+      return {allowableTorqueNm:i.interfaceYield*area/1000*i.yieldFactor*arm,maxForceKn,
+        requiredForceKn:i.mass*i.impactG*i.conditionFactor/(i.quantity*i.attenuation*100),
+        minOuterMm:2*Math.sqrt(maxForceKn*1000/i.interfaceYield/3.14+(i.innerDiameter/2)**2)};
     }
     case 'tolerance':
       return {
@@ -129,11 +131,10 @@ const adapters = {
     },
   },
   bolt: {
-    result: '.bt-result', cards: '.bt-results > div', label: 'span', value: 'b',
-    outputs: { maxTorqueNm: '最大扭矩', preloadN: '单颗预紧力', boltStressMpa: '螺栓总应力', contactStressMpa: '界面承压应力', allowableTorqueNm: '75%屈服参考扭矩' },
-    async fill(page, i) {
-      // Current bolt suite calculates on input, without a calculation button.
-      for (const [key, value] of Object.entries(i)) await setControl(page, `[data-joint-field="${key}"]`, value);
+    result: '.bt-result', cards: '.bt-check-table tbody tr', label: 'th', value: 'td:nth-child(2)',
+    outputs: {allowableTorqueNm:'最大允许扭矩',maxForceKn:'最大螺栓轴力',requiredForceKn:'单颗最小所需轴力',minOuterMm:'最小允许外径'},
+    async fill(page,i) {
+      for(const [key,value] of Object.entries(i))await setControl(page,`[data-joint-field="${key}"]`,value);
     },
   },
   iec60664: {

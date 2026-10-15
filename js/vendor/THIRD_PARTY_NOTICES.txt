@@ -1,4 +1,4 @@
-Third-party browser libraries used by the SOR generator
+Third-party browser libraries (bundled for offline use)
 
 1. JSZip 3.10.1
    Copyright (c) Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso
@@ -11,3 +11,11 @@ Third-party browser libraries used by the SOR generator
    Source: https://github.com/VolodymyrBaydalka/docxjs
 
 The complete license texts are available at the source repositories above.
+
+3. KaTeX 0.19.0
+   Copyright (c) 2013-2020 Khan Academy and other contributors
+   License: MIT; full text in katex/LICENSE
+   Source: https://github.com/KaTeX/KaTeX
+   Official npm package SHA-512:
+   v6Tznz3zJ7u3niRCoDTsumM2+HA2XXcCu+WAacCeHD2z3p9A9Ks987o5FzfTGBN0e8A0vjEgIDvLbICrXpdw/Q==
+   Runtime: katex/katex.min.js, katex/katex.min.css, katex/fonts/
