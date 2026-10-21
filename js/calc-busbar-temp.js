@@ -99,6 +99,7 @@
   }
 
   function readLegacyRmsMap() {
+    if (window.ElectricalProjectController?.enabled) return null;
     const drafts = window.CalculatorDrafts;
     if (!drafts || drafts.read('busbar-temp')) return null;
     const legacy = drafts.read('rms-current');

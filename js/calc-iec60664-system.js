@@ -95,6 +95,7 @@
   }
 
   function loadState() {
+    if (window.ElectricalProjectController?.enabled) return defaultState();
     const result = window.ElectricalStorage.readJson(STORAGE_KEY, { validate: window.ElectricalSafety.isPlainObject });
     return normalize(result.value);
   }

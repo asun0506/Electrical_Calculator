@@ -44,8 +44,8 @@
     if (!result.ok) alert('浏览器本地存储失败。请检查隐私模式或存储空间，并先导出数据备份。');
     return result.ok;
   }
-  const overrides = load(LS_OVERRIDE);
-  const customs = load(LS_CUSTOM);
+  let overrides = load(LS_OVERRIDE);
+  let customs = load(LS_CUSTOM);
   let editing = false; // 是否处于"可修改参数"状态
 
   /** 获取完整材料列表（默认 + 自定义） */
@@ -71,6 +71,16 @@
 
   T.register({
     id: 'materials',
+    captureShared: () => JSON.parse(JSON.stringify({ overrides, customs })),
+    validateShared(value) {
+      const valid = window.ElectricalSafety.isPlainObject(value) && window.ElectricalSafety.isPlainObject(value.overrides) && window.ElectricalSafety.isPlainObject(value.customs);
+      return valid ? { ok: true, value: JSON.parse(JSON.stringify(value)) } : { ok: false, error: { code: 'invalid', message: '用户材料库格式无效' } };
+    },
+    restoreShared(value) {
+      const checked = this.validateShared(value);
+      if (!checked.ok) throw new Error(checked.error.message);
+      overrides = checked.value.overrides; customs = checked.value.customs;
+    },
     resetLabel: '恢复默认查询（不删除材料库）',
     captureDraft(host) {
       return { category: host.querySelector('#mt-cat').value, name: currentName(), editing,

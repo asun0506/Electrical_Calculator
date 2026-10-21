@@ -104,6 +104,7 @@
   }
 
   function saveProject() {
+    if (window.ElectricalProjectController?.enabled) { saveFailed = false; return true; }
     const result = window.ElectricalStorage.writeJson(STORAGE_KEY, project);
     saveFailed = !result.ok;
     if (!result.ok) {

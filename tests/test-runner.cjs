@@ -7,6 +7,7 @@ const runner = require('../scripts/run-tests.cjs');
 assert.deepEqual(runner.groups.unit, [
   'tests/workspace-core.cjs',
   'tests/workspace-store.cjs',
+  'tests/workspace-migration.cjs',
   'tests/math-render.cjs',
   'tests/bolt-torque-core.cjs',
   'tests/safety.cjs',
