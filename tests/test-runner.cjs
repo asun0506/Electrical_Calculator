@@ -9,6 +9,8 @@ assert.deepEqual(runner.groups.unit, [
   'tests/workspace-store.cjs',
   'tests/workspace-migration.cjs',
   'tests/backup-format.cjs',
+  'tests/backup-io.cjs',
+  'tests/backup-zip.cjs',
   'tests/math-render.cjs',
   'tests/bolt-torque-core.cjs',
   'tests/safety.cjs',
