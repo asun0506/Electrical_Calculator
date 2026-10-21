@@ -326,6 +326,7 @@
   window.addEventListener('load', async () => {
     if (window.CalculatorDrafts) await window.CalculatorDrafts.ready;
     if (global.ElectricalProjectController) await global.ElectricalProjectController.initialize();
+    if (global.ElectricalBackupUI) global.ElectricalBackupUI.mount();
     if (!registry.length) return;
     const remembered = global.ElectricalStorage.readText(ACTIVE_KEY).value;
     const migratedId = remembered === 'rms-current' && toolkit.get('busbar-temp') ? 'busbar-temp' : remembered;

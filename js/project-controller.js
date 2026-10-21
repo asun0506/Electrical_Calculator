@@ -3,7 +3,7 @@
   'use strict';
   const C = window.ElectricalWorkspaceCore, A = window.ElectricalProjectAdapters;
   let workspace = C.createWorkspace(), store, current = null, initialized, enabled = false;
-  let queue = Promise.resolve(), timer, observer, detach = () => {}, generation = 0, lastSaved = '', pendingFailure = null, navigationRequested = false;
+  let queue = Promise.resolve(), timer, observer, detach = () => {}, generation = 0, lastSaved = '', pendingFailure = null, navigationRequested = false, editRevision = 0;
   const uid = () => crypto.randomUUID?.() || 'project-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   const now = () => new Date().toISOString();
   const enqueue = fn => { const result = queue.then(fn).catch(error => { message('操作失败：' + error.message); return C.fail(error.message); }); queue = result.then(() => {}); return result; };
@@ -56,7 +56,7 @@
   function currentProject() { return workspace.projects.find(item => item.id === current?.projectId) || null; }
   function projects() { return workspace.projects.filter(item => item.moduleId === current?.moduleId).map(C.clone); }
   function refreshToolbar() { if (current) window.ElectricalProjectUI.mountProjectToolbar(current.frame.toolbar, api); }
-  function schedule() { clearTimeout(timer); message('未保存 · 正在等待自动保存'); timer = setTimeout(() => api.flush(), 180); }
+  function schedule() { editRevision += 1; clearTimeout(timer); message('未保存 · 正在等待自动保存'); timer = setTimeout(() => api.flush(), 180); }
   function bind() {
     const host = current.frame.host;
     ['input', 'change', 'click', 'paste'].forEach(type => host.addEventListener(type, schedule, true));
@@ -180,6 +180,7 @@
   const api = {
     get enabled() { return enabled; }, initialize, readDraft, currentProject, projects, refreshToolbar, message,
     get store() { return store; }, workspace: () => C.clone(workspace),
+    editRevision: () => editRevision,
     session: () => current ? { moduleId: current.moduleId, projectId: current.projectId, token: current.token } : null,
     isCurrent: token => current?.token === token,
     open: (id, projectId) => { navigationRequested = true; return enqueue(() => transition(id, projectId)); },
