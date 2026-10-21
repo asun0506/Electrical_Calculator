@@ -28,7 +28,7 @@
         } catch (error) { return C.fail(error.message); }
       },
       capture: host => window.CalculatorDrafts.capture(calc, host),
-      restore: (payload, host) => window.CalculatorDrafts.restore(calc, host, payload),
+      restore: (payload, host) => window.CalculatorDrafts.restore(calc, host, payload, true),
     });
   }
   function migrateLegacy({ workspace, legacyDrafts = {}, legacyValues = {}, adapters = registry }) {

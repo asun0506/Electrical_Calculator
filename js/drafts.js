@@ -56,8 +56,9 @@
       details: Array.from(host.querySelectorAll('details')).map((node, index) => ({ id: node.id, index, open: node.open })),
     };
   }
-  function restore(calc, host, saved) {
-    if (calc.restoreDraft && saved.model != null) calc.restoreDraft(saved.model, host);
+  function restore(calc, host, saved, projectSnapshot = false) {
+    if (projectSnapshot && calc.restoreProjectDraft && saved.model != null) calc.restoreProjectDraft(saved.model, host);
+    else if (calc.restoreDraft && saved.model != null) calc.restoreDraft(saved.model, host);
     else applyForm(host, saved.form, true);
     // Replay only known UI switches, never arbitrary saved selectors or commands.
     (saved.tabs || []).forEach((tab) => {

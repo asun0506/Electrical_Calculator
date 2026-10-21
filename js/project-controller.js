@@ -115,7 +115,7 @@
     try {
       const saved = await flushInternal(); if (!saved.ok) return saved;
       const adapter = A.get(moduleId);
-      let next = C.clone(workspace), payload;
+      let next = C.clone(workspace), payload, initializedDefault = false;
       if (adapter.mode === 'project') {
         projectId = projectId || next.active[moduleId];
         let target = next.projects.find(item => item.moduleId === moduleId && item.id === projectId);
@@ -127,6 +127,7 @@
           const created = C.createProject(next, { moduleId, name: '新项目 1', payload, appVersion: '2.1.1', adapterVersion: adapter.version }, { id: uid(), now: now() });
           if (!created.ok) throw new Error(created.error.message);
           next = created.value; projectId = next.active[moduleId];
+          initializedDefault = true;
         } else {
           const checked = adapter.validate(target.payload); if (!checked.ok) return checked;
           payload = checked.value;
@@ -135,7 +136,8 @@
       } else payload = next.queries[moduleId] || null;
       next.shared = captureShared(); next.shared.preferences.activeModule = moduleId;
       // Restore before committing an active pointer; failed target rendering leaves source durable.
-      mount(moduleId, payload, projectId || null);
+      if (initializedDefault) current.projectId = projectId;
+      else mount(moduleId, payload, projectId || null);
       if (adapter.mode === 'query') next.queries[moduleId] = adapter.capture(current.frame.host);
       const changed = JSON.stringify(next) !== JSON.stringify(workspace);
       if (changed) { const written = await commit(next); if (!written.ok) { if (!source) workspace = next; throw new Error(written.error.message); } }
@@ -161,7 +163,9 @@
       const next = C.createProject(workspace, { moduleId: source.moduleId, name, payload, appVersion: '2.1.1', adapterVersion: current.adapter.version }, { id: uid(), now: now() });
       if (!next.ok) throw new Error(next.error.message);
       const written = await commit(next.value); if (!written.ok) throw new Error(written.error.message);
-      mount(source.moduleId, payload, workspace.active[source.moduleId]); return C.ok(currentProject());
+      if (copy) mount(source.moduleId, payload, workspace.active[source.moduleId]);
+      else { current.projectId = workspace.active[source.moduleId]; refreshToolbar(); lastSaved = JSON.stringify(current.adapter.capture(current.frame.host)); message('已保存至当前浏览器 · 新项目已初始化'); }
+      return C.ok(currentProject());
     } catch (error) { mount(source.moduleId, source.payload, source.projectId); message('新建失败：' + error.message); return C.fail(error.message); }
   }
   async function captureWorkspace() {
