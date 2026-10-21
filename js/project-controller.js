@@ -3,7 +3,7 @@
   'use strict';
   const C = window.ElectricalWorkspaceCore, A = window.ElectricalProjectAdapters;
   let workspace = C.createWorkspace(), store, current = null, initialized, enabled = false;
-  let queue = Promise.resolve(), timer, observer, detach = () => {}, generation = 0, lastSaved = '', pendingFailure = null;
+  let queue = Promise.resolve(), timer, observer, detach = () => {}, generation = 0, lastSaved = '', pendingFailure = null, navigationRequested = false;
   const uid = () => crypto.randomUUID?.() || 'project-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   const now = () => new Date().toISOString();
   const enqueue = fn => { const result = queue.then(fn).catch(error => { message('操作失败：' + error.message); return C.fail(error.message); }); queue = result.then(() => {}); return result; };
@@ -182,7 +182,8 @@
     get store() { return store; }, workspace: () => C.clone(workspace),
     session: () => current ? { moduleId: current.moduleId, projectId: current.projectId, token: current.token } : null,
     isCurrent: token => current?.token === token,
-    open: (id, projectId) => enqueue(() => transition(id, projectId)),
+    open: (id, projectId) => { navigationRequested = true; return enqueue(() => transition(id, projectId)); },
+    openInitial: id => navigationRequested ? Promise.resolve(C.ok(null)) : enqueue(() => transition(id)),
     flush: () => enqueue(flushInternal),
     newProject: name => enqueue(() => create(name, false)), copyProject: name => enqueue(() => create(name, true)),
     renameProject: name => enqueue(async () => { const saved = await flushInternal(); if (!saved.ok) return saved; const renamed = C.renameProject(workspace, current.projectId, name, now()); if (!renamed.ok) return renamed; const result = await commit(renamed.value); refreshToolbar(); return result; }),

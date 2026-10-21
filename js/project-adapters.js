@@ -17,7 +17,16 @@
     return register(calc.id, {
       version: 1, mode: QUERY_IDS.includes(calc.id) ? 'query' : 'project',
       initialize(host) { calc.render(host); if (calc.resetDraft && !QUERY_IDS.includes(calc.id)) calc.resetDraft(host); },
-      validate: payload => C.validatePayload(payload),
+      validate(payload) {
+        const checked = C.validatePayload(payload);
+        if (!checked.ok || payload.model == null) return checked;
+        try {
+          if (calc.validateDraft && !calc.validateDraft(payload.model)) return C.fail('项目模型不符合“' + calc.title + '”的数据格式');
+          if (['bend-radius', 'tolerance'].includes(calc.id) && (!Number.isInteger(payload.model.rows) || payload.model.rows < 0 || payload.model.rows > 1000)) return C.fail('动态行数量无效');
+          if (calc.id === 'harness-od' && (!Array.isArray(payload.model.rows) || payload.model.rows.length > 1000 || !payload.model.rows.every(row => row && typeof row.type === 'string' && ['string', 'number'].includes(typeof row.size)))) return C.fail('线束行结构无效');
+          return checked;
+        } catch (error) { return C.fail(error.message); }
+      },
       capture: host => window.CalculatorDrafts.capture(calc, host),
       restore: (payload, host) => window.CalculatorDrafts.restore(calc, host, payload),
     });

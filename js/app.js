@@ -290,10 +290,35 @@
     fmtExact,
     escapeHtml,
     previewImage,
+    editSession: () => global.ElectricalProjectController?.session()?.token ?? null,
+    editSessionCurrent: token => token == null || global.ElectricalProjectController?.isCurrent(token),
+    projectFilename(baseName) {
+      const project = global.ElectricalProjectController?.currentProject();
+      return project ? global.ElectricalSafety.safeFilename(project.name) + '__' + global.ElectricalSafety.safeFilename(baseName) : baseName;
+    },
   };
 
   global.ElectricalToolkit = toolkit;
   global.ElUtil = util;
+
+  let projectPrintTitle = null;
+  window.addEventListener('beforeprint', () => {
+    const project = global.ElectricalProjectController?.currentProject();
+    if (!project) return;
+    if (projectPrintTitle === null) projectPrintTitle = document.title;
+    document.title = util.projectFilename(projectPrintTitle);
+    const shell = Array.from(document.body.children).find(node => node.classList.contains('active') && /print|report/i.test(node.className));
+    const reportHeader = shell?.querySelector('header');
+    if (reportHeader && !reportHeader.querySelector('.workspace-report-project')) {
+      const label = document.createElement('p'); label.className = 'workspace-report-project';
+      label.textContent = '功能项目 / Project: ' + project.name;
+      reportHeader.append(label);
+    }
+  });
+  window.addEventListener('afterprint', () => {
+    document.querySelectorAll('.workspace-report-project').forEach(node => node.remove());
+    if (projectPrintTitle !== null) { document.title = projectPrintTitle; projectPrintTitle = null; }
+  });
 
   // 模块加载完成后，优先恢复上次打开的计算器。
   window.addEventListener('pagehide', () => { toolkit.flush(); });
@@ -304,6 +329,8 @@
     if (!registry.length) return;
     const remembered = global.ElectricalStorage.readText(ACTIVE_KEY).value;
     const migratedId = remembered === 'rms-current' && toolkit.get('busbar-temp') ? 'busbar-temp' : remembered;
-    toolkit.open(toolkit.get(migratedId) ? migratedId : registry[0].id);
+    const initialId = toolkit.get(migratedId) ? migratedId : registry[0].id;
+    if (global.ElectricalProjectController) await global.ElectricalProjectController.openInitial(initialId);
+    else toolkit.open(initialId);
   });
 })(window);

@@ -33,7 +33,7 @@
   }
   function levelName(level) { return level===1?'第一层级 · 电气系统':'第二层级 · 部件/子零件特性'; }
   function options(value) { return Array.from({length:10},(_,i)=>`<option value="${i+1}"${+value===i+1?' selected':''}>${i+1}</option>`).join(''); }
-  function download(blob, name) { const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1200); }
+  function download(blob, name) { name=E.projectFilename(name);const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download=name; document.body.appendChild(a); a.click(); setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1200); }
 
   function render(host) {
     hostRef=host;
@@ -114,12 +114,14 @@
     renderWork();
   }
   async function importJson(event) {
+    const sessionToken=E.editSession();
     const file=event.target.files[0];event.target.value='';if(!file)return;
     try{
       const S=window.ElectricalSafety;
       if(file.size>10*1024*1024)throw new Error('JSON 大小不能超过 10 MB');
       const data=S.parseJson(await file.text(),{maxArrayLength:5000,validate:data=>S.isPlainObject(data)&&Array.isArray(data.rows)&&data.rows.every(row=>
         S.isPlainObject(row)&&Object.entries(row).every(([key,value])=>key==='tags'?(Array.isArray(value)&&value.length<=100&&value.every(tag=>typeof tag==='string')):value==null||['string','number','boolean'].includes(typeof value)))});
+      if(!E.editSessionCurrent(sessionToken))return;
       state.rows=migrateRows(data.rows,data.version);renderWork();
     }catch(error){alert('JSON导入失败：'+error.message);}
   }
@@ -236,6 +238,7 @@
     @media(max-width:850px){.df-intro{align-items:flex-start;flex-direction:column}.df-filters{grid-template-columns:1fr 1fr}.df-filters label:first-child{grid-column:1/-1}.df-lib-row{grid-template-columns:24px 120px 1fr 60px}.df-lib-row>span:nth-of-type(3){display:none}}`}
 
   T.register({id:'dfmea',title:'DFMEA生成器',icon:'🧩',group:'工程文档与评审',desc:'基于原版Excel模板建立动力电池电气系统与部件两级DFMEA，子零件分析整合在部件行中。',
+    validateDraft:saved=>saved&&Array.isArray(saved.rows)&&saved.rows.every(row=>window.ElectricalSafety.isPlainObject(row)&&Object.entries(row).every(([key,value])=>key==='tags'?Array.isArray(value)&&value.every(tag=>typeof tag==='string'):value==null||['string','number','boolean'].includes(typeof value))),
     captureDraft(){return {version:LIB.version,query:state.query,level:state.level,family:state.family,rows:state.rows};},
     restoreDraft(saved){
       const rows=migrateRows(saved.rows||[],saved.version);

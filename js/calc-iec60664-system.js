@@ -512,6 +512,7 @@
   }
 
   function compressImage(file, callback) {
+    const sessionToken = E.editSession();
     if (file.size > 6 * 1024 * 1024) { alert('图片导入失败：图片不能超过 6 MB'); return; }
     const reader = new FileReader();
     reader.onload = () => {
@@ -520,6 +521,7 @@
       catch (error) { alert(`图片导入失败：${error.message}`); return; }
       const img = new Image();
       img.onload = () => {
+        if (!E.editSessionCurrent(sessionToken)) return;
         const maxWidth = 1200;
         const scale = Math.min(1, maxWidth / img.width);
         const canvas = document.createElement('canvas');
@@ -633,7 +635,7 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = lang === 'en' ? reportFilename('doc').replace(/\.doc$/, '_EN.doc') : reportFilename('doc');
+    link.download = E.projectFilename(lang === 'en' ? reportFilename('doc').replace(/\.doc$/, '_EN.doc') : reportFilename('doc'));
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -647,7 +649,7 @@
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = reportFilename('json');
+    link.download = E.projectFilename(reportFilename('json'));
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -655,6 +657,7 @@
   }
 
   function importJson(file, input) {
+    const sessionToken = E.editSession();
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) {
       alert('JSON 大小超过 10 MB，请减少或压缩截图后再导入。');
@@ -662,6 +665,7 @@
       return;
     }
     file.text().then((text) => {
+      if (!E.editSessionCurrent(sessionToken)) return;
       const raw = window.ElectricalSafety.parseJson(text, { maxArrayLength: 1000, validate: validImport });
       if (!confirm('导入将替换当前校核的全部参数、关键尺寸和图片，是否继续？')) return;
       state = normalize(raw);
@@ -686,6 +690,7 @@
 
   T.register({
     id: 'iec60664',
+    validateDraft: validImport,
     captureDraft: () => JSON.parse(JSON.stringify(state)),
     restoreDraft(saved) { state = normalize(saved); renderAll(); },
     resetDraft() { state = defaultState(); persistNow(); renderAll(); },

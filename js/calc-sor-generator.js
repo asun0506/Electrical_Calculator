@@ -360,6 +360,7 @@
   }
 
   async function importCellImage(event) {
+    const sessionToken = E.editSession();
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     if (file.size > 6 * 1024 * 1024) {
@@ -372,6 +373,7 @@
     try { dataUrl = window.ElectricalSafety.validateImageDataUrl(await readFileDataUrl(file)); }
     catch (error) { window.alert(`图片导入失败：${error.message}`); event.target.value = ''; return; }
     const size = await readImageSize(dataUrl);
+    if (!E.editSessionCurrent(sessionToken)) return;
     state.cellImages[event.target.dataset.cellImage] = {
       name: file.name,
       type: file.type,
@@ -399,12 +401,14 @@
   }
 
   async function importAttachments(event) {
+    const sessionToken = E.editSession();
     const category = hostRef.querySelector('#sorAttachmentCategory').value;
     const note = hostRef.querySelector('#sorAttachmentNote').value.trim();
     for (const file of Array.from(event.target.files || [])) {
       try {
         if (file.type.startsWith('image/') && file.size > 6 * 1024 * 1024) throw new Error('图片不能超过 6 MB');
         const dataUrl = await readFileDataUrl(file);
+        if (!E.editSessionCurrent(sessionToken)) return;
         if (dataUrl.startsWith('data:image/')) window.ElectricalSafety.validateImageDataUrl(dataUrl);
         state.attachments.push({ name: file.name, type: file.type || 'application/octet-stream', size: file.size, category, note, dataUrl });
       } catch (error) { window.alert(`附件导入失败：${error.message}`); }
@@ -413,6 +417,7 @@
   }
 
   function downloadBlob(blob, name) {
+    name = E.projectFilename(name);
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -429,11 +434,13 @@
   }
 
   async function importJson(event) {
+    const sessionToken = E.editSession();
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     try {
       if (file.size > 10 * 1024 * 1024) throw new Error('JSON 大小不能超过 10 MB');
       const data = window.ElectricalSafety.parseJson(await file.text(), { maxArrayLength: 1000, validate: validImport });
+      if (!E.editSessionCurrent(sessionToken)) return;
       const next = defaultState();
       next.meta = { ...next.meta, ...(data.meta || {}) };
       Object.keys(next.fields).forEach((id) => { if (Object.prototype.hasOwnProperty.call(data.fields, id)) next.fields[id] = data.fields[id]; });
@@ -700,6 +707,7 @@
 
   ElectricalToolkit.register({
     id: 'sor-generator',
+    validateDraft: validImport,
     captureDraft: () => clone(state),
     restoreDraft(saved) {
       const next = defaultState();

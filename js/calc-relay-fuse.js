@@ -381,6 +381,7 @@
   }
 
   function downloadBlob(blob, name) {
+    name = E.projectFilename(name);
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -394,10 +395,11 @@
   function exportData() { downloadBlob(new Blob([JSON.stringify(collectAll(), null, 2)], { type: 'application/json' }), `电池包保护配合校核_${new Date().toISOString().slice(0, 10)}.json`); }
 
   function importData(file) {
+    const sessionToken = E.editSession();
     if (!file) return;
     if (file.size > 10 * 1024 * 1024) { window.alert('导入失败：JSON 大小不能超过 10 MB'); return; }
     const reader = new FileReader();
-    reader.onload = () => { try { const data = window.ElectricalSafety.parseJson(reader.result, { maxArrayLength: 2000, validate: validImport }); applyAll(data); } catch (error) { window.alert(`导入失败：${error.message}`); } };
+    reader.onload = () => { if (!E.editSessionCurrent(sessionToken)) return; try { const data = window.ElectricalSafety.parseJson(reader.result, { maxArrayLength: 2000, validate: validImport }); applyAll(data); } catch (error) { window.alert(`导入失败：${error.message}`); } };
     reader.readAsText(file);
   }
 
@@ -489,6 +491,7 @@
   }
 
   T.register({ id: 'relay-fuse', title: '继电器 / 保险丝匹配', icon: '🔌', group: '电气计算', desc: '计算电池包等效内阻与最大外短电流，录入厂家保护曲线并输出人工校核分析及 PDF 报告。', render: renderModule,
+    validateDraft: validImport,
     captureDraft() {
       const data = collectAll();
       delete data.savedAt;
