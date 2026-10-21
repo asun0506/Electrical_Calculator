@@ -37,7 +37,7 @@
 
   const controls = (host) => Array.from(host.querySelectorAll('input:not([type=file]):not([type=password]),select,textarea'));
   function captureForm(host) {
-    return controls(host).map((control, index) => ({ id: control.id, index, value: control.value, checked: control.checked }));
+    return controls(host).map((control, index) => ({ id: control.id, index, value: control.value, ...(typeof control.checked === 'boolean' ? { checked: control.checked } : {}) }));
   }
   function applyForm(host, values, notifySelects = false) {
     const existing = controls(host);

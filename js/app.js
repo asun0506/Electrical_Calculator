@@ -89,6 +89,7 @@
 
     /** 切换到指定计算器 */
     open(id) {
+      if (global.ElectricalProjectController) return global.ElectricalProjectController.open(id);
       const calc = this.get(id);
       if (!calc) return;
       if (flushDraft) flushDraft();
@@ -100,6 +101,14 @@
       this.renderContent();
       window.scrollTo({ top: 0, behavior: 'smooth' });
     },
+
+    activate(id) {
+      activeId = id;
+      global.ElectricalStorage.writeText(ACTIVE_KEY, id);
+      this.renderNav();
+    },
+
+    flush() { return global.ElectricalProjectController ? global.ElectricalProjectController.flush() : Promise.resolve(flushDraft ? flushDraft() : true); },
 
     renderNav() {
       // 按 group 分组渲染
@@ -287,10 +296,11 @@
   global.ElUtil = util;
 
   // 模块加载完成后，优先恢复上次打开的计算器。
-  window.addEventListener('pagehide', () => { if (flushDraft) flushDraft(); });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && flushDraft) flushDraft(); });
+  window.addEventListener('pagehide', () => { toolkit.flush(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden) toolkit.flush(); });
   window.addEventListener('load', async () => {
     if (window.CalculatorDrafts) await window.CalculatorDrafts.ready;
+    if (global.ElectricalProjectController) await global.ElectricalProjectController.initialize();
     if (!registry.length) return;
     const remembered = global.ElectricalStorage.readText(ACTIVE_KEY).value;
     const migratedId = remembered === 'rms-current' && toolkit.get('busbar-temp') ? 'busbar-temp' : remembered;

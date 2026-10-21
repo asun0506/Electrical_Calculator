@@ -1048,3 +1048,16 @@ body { background: var(--bg); line-height: 1.55; }
   body.iec-printing .iec-print-root { display: block !important; }
   body.iec-printing { background: #fff; }
 }
+/* Independent module projects; management controls are excluded from reports. */
+.project-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 16px}
+.project-selector{display:flex;gap:8px;align-items:center;min-width:0;font-weight:600}
+.project-selector select{min-width:190px;max-width:380px}
+.project-actions{display:flex;gap:6px;flex-wrap:wrap}
+.project-toolbar button{padding:7px 10px;cursor:pointer}
+.project-toolbar [role=status]{flex:1 1 240px;font-size:12px;color:var(--text-muted)}
+.workspace-dialog{width:min(720px,calc(100vw - 32px));max-height:85vh;overflow:auto;border:1px solid #bccbd8;border-radius:8px;padding:24px;color:#173b5e;background:#fff}
+.workspace-dialog::backdrop{background:rgba(13,29,45,.45)}
+.workspace-dialog label{display:grid;gap:8px;margin:14px 0}
+.workspace-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin:20px 0 0}
+@media(max-width:700px){.project-selector{width:100%}.project-selector select{flex:1;min-width:0}.workspace-dialog{padding:16px}}
+@media print{.project-toolbar,.workspace-dialog,.workspace-backup-entry{display:none!important}}

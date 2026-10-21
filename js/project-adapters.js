@@ -12,6 +12,16 @@
     if (!C.idValid(id) || !adapter || typeof adapter.validate !== 'function') throw new Error('无效项目适配器');
     registry.set(id, adapter); return adapter;
   }
+  function ensure(calc) {
+    if (registry.has(calc.id)) return registry.get(calc.id);
+    return register(calc.id, {
+      version: 1, mode: QUERY_IDS.includes(calc.id) ? 'query' : 'project',
+      initialize(host) { calc.render(host); if (calc.resetDraft && !QUERY_IDS.includes(calc.id)) calc.resetDraft(host); },
+      validate: payload => C.validatePayload(payload),
+      capture: host => window.CalculatorDrafts.capture(calc, host),
+      restore: (payload, host) => window.CalculatorDrafts.restore(calc, host, payload),
+    });
+  }
   function migrateLegacy({ workspace, legacyDrafts = {}, legacyValues = {}, adapters = registry }) {
     const valid = C.validateWorkspace(workspace);
     if (!valid.ok) return valid;
@@ -72,5 +82,5 @@
     for (const item of drafts.preserved?.() || []) preserved.push(item);
     return { legacyValues, legacyDrafts, preserved };
   }
-  return { register, get: id => registry.get(id), entries: () => registry.entries(), list: () => [...registry.entries()], QUERY_IDS, LEGACY_KEYS, migrateLegacy, collectLegacy };
+  return { register, ensure, get: id => registry.get(id), entries: () => registry.entries(), list: () => [...registry.entries()], QUERY_IDS, LEGACY_KEYS, migrateLegacy, collectLegacy };
 });
