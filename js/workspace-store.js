@@ -101,9 +101,44 @@
       await ready;
       const keys = storage.keys(PREFIX + 'point:');
       const local = keys.ok ? keys.value.map(key => storage.readJson(key).value).filter(Boolean) : [];
-      return [...new Map([...points, ...local].map(point => [point.id, point])).values()].map(({ id, createdAt, scope }) => ({ id, createdAt, scope }));
+      return [...new Map([...points, ...local].map(point => [point.id, point])).values()].filter(point => !point.applied || current.recoveryIds?.includes(point.id)).map(({ id, createdAt, scope }) => ({ id, createdAt, scope }));
     }
-    return { ready, read: () => C.clone(current), commit, createRecoveryPoint, listRecoveryPoints, readRecoveryPoint, conflicts: () => C.clone(conflicts) };
+    async function restore(plan, expectedRevision) {
+      await ready;
+      if (!plan?.next || !plan.affected || !C.validateWorkspace(plan.next).ok) return C.fail('恢复计划无效');
+      const point = { id: 'recovery-' + uid(), kind: 'recovery-point', createdAt: new Date().toISOString(), scope: C.clone(plan.affected), state: C.clone(current), applied: C.clone(plan.next) };
+      const next = C.clone(plan.next); next.recoveryIds = [...(next.recoveryIds || []), point.id];
+      const written = await commit(next, expectedRevision, [point]);
+      return written.ok ? C.ok({ state: written.value, recoveryPointId: point.id }) : written;
+    }
+    async function rollback(pointId, expectedRevision) {
+      const point = await readRecoveryPoint(pointId);
+      if (!point.ok) return point;
+      const { state: before, applied, scope } = point.value;
+      if (!applied || !current.recoveryIds?.includes(pointId)) return C.fail('此恢复点未提交或已回退');
+      for (const id of scope.projectIds) {
+        if (JSON.stringify(current.projects.find(project => project.id === id)) !== JSON.stringify(applied.projects.find(project => project.id === id))) return C.fail('恢复后此项目有新修改；不能直接回退，请将恢复点另存为副本', 'conflict');
+      }
+      for (const kind of scope.sharedKeys) if (JSON.stringify(current.shared[kind]) !== JSON.stringify(applied.shared[kind])) return C.fail('公共数据已有新修改，请另存恢复点副本', 'conflict');
+      for (const id of scope.queryIds) if (JSON.stringify(current.queries[id]) !== JSON.stringify(applied.queries[id])) return C.fail('查询状态已有新修改，请另存恢复点副本', 'conflict');
+      const next = C.clone(current);
+      next.projects = next.projects.filter(project => !scope.projectIds.includes(project.id));
+      for (const previous of before.projects.filter(project => scope.projectIds.includes(project.id))) {
+        const version = current.projects.find(project => project.id === previous.id)?.revision || 0;
+        next.projects.push({ ...C.clone(previous), revision: Math.max(previous.revision, version) + 1, updatedAt: new Date().toISOString() });
+      }
+      for (const kind of scope.sharedKeys) { if (Object.hasOwn(before.shared, kind)) next.shared[kind] = C.clone(before.shared[kind]); else delete next.shared[kind]; }
+      for (const id of scope.queryIds) { if (Object.hasOwn(before.queries, id)) next.queries[id] = C.clone(before.queries[id]); else delete next.queries[id]; }
+      for (const [moduleId, id] of Object.entries(next.active)) {
+        if (!next.projects.some(project => project.id === id)) {
+          if (before.active[moduleId]) next.active[moduleId] = before.active[moduleId]; else delete next.active[moduleId];
+        }
+      }
+      next.recoveryIds = (next.recoveryIds || []).filter(id => id !== pointId);
+      const written = await restore({ next, affected: scope }, expectedRevision);
+      return written.ok ? C.ok(written.value.state) : written;
+    }
+    return { ready, read: () => C.clone(current), commit, createRecoveryPoint, listRecoveryPoints, readRecoveryPoint, restore, rollback, conflicts: () => C.clone(conflicts) };
   }
   return Object.freeze({ createWorkspaceStore, PREFIX });
 });

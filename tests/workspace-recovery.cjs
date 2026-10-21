@@ -1,0 +1,52 @@
+const assert = require('node:assert/strict');
+const C = require('../js/workspace-core.js'), { createWorkspaceStore } = require('../js/workspace-store.js'), { createStorage } = require('../js/storage.js');
+assert.equal(typeof C.planRestore, 'function', 'restoration must be planned without mutating live data');
+const now = '2026-10-22T01:00:00Z', payload = value => ({ form: [{ id: 'voltage', index: 0, value }], model: null, tabs: [], details: [] });
+let state = C.createProject(C.createWorkspace(), { moduleId: 'precharge', name: '现有校核', payload: payload('400') }, { id: 'original', now }).value;
+state.shared.materials = { overrides: { Cu: { E: 1 } }, customs: {} };
+const source = { ...state.projects[0], id: 'backup-source', appVersion: '1.0.0', payload: payload('800') };
+const inspection = { manifest: { snapshot: { id: 'backup-1' } }, validProjects: [source], invalidProjects: [{ id: 'bad', reason: 'missing attachment' }], queries: {}, shared: { materials: { overrides: { Cu: { E: 2 } }, customs: {} } }, preserved: [] };
+let sequence = 0; const clock = { id: () => 'restored-' + ++sequence, now: () => now };
+const plan = C.planRestore(state, inspection, {}, clock);
+assert.equal(plan.ok, true); assert.equal(plan.value.next.projects.length, 2);
+assert.equal(plan.value.next.projects[0].payload.form[0].value, '400');
+assert.equal(plan.value.next.projects[1].payload.form[0].value, '800');
+assert.equal(plan.value.next.projects[1].requiresReview, true);
+assert.equal(plan.value.next.shared.materials.overrides.Cu.E, 1, 'public data opt-in');
+assert.equal(state.projects.length, 1, 'planning never mutates live workspace');
+assert.equal(C.planRestore(state, inspection, { mode: 'replace' }, clock).ok, false);
+assert.equal(C.planRestore(state, inspection, { projectIds: ['bad'] }, clock).ok, false);
+const replace = C.planRestore(state, inspection, { mode: 'replace', targets: { 'backup-source': 'original' }, includeShared: true }, clock);
+assert.equal(replace.ok, true); assert.equal(replace.value.next.projects.length, 1);
+assert.equal(replace.value.next.projects[0].id, 'original');
+assert.equal(replace.value.next.shared.materials.overrides.Cu.E, 2);
+assert.equal(C.planRestore(state, { ...inspection, validProjects: [{ ...source, moduleId: 'bolt' }] }, { mode: 'replace', targets: { 'backup-source': 'original' } }, clock).ok, false);
+const values = new Map(); let failPoint = false, failAll = false;
+const env = { navigator: { locks: { request: async (_name, fn) => fn() } }, localStorage: {
+  get length() { return values.size; }, key: i => [...values.keys()][i] ?? null, getItem: key => values.get(key) ?? null,
+  setItem(key, value) { if (failAll || failPoint && key.includes('point:')) throw Error('quota'); values.set(key, String(value)); }, removeItem: key => values.delete(key),
+} }; env.storage = createStorage(env);
+(async () => {
+  const store = createWorkspaceStore(env); await store.ready;
+  assert.equal((await store.commit(state, 0)).ok, true); state = store.read();
+  const replacing = C.planRestore(state, inspection, { mode: 'replace', targets: { 'backup-source': 'original' }, includeShared: true }, clock).value;
+  failPoint = true;
+  assert.equal((await store.restore(replacing, state.revision)).ok, false, 'recovery point failure blocks whole replacement');
+  assert.equal(store.read().projects[0].payload.form[0].value, '400');
+  failPoint = false;
+  const applied = await store.restore(replacing, state.revision); assert.equal(applied.ok, true);
+  assert.equal(store.read().projects[0].payload.form[0].value, '800');
+  const pointId = applied.value.recoveryPointId;
+  assert.equal((await store.rollback(pointId, store.read().revision)).ok, true);
+  assert.equal(store.read().projects[0].payload.form[0].value, '400');
+  assert.equal(store.read().shared.materials.overrides.Cu.E, 1);
+  const applied2 = await store.restore(C.planRestore(store.read(), inspection, { mode: 'replace', targets: { 'backup-source': 'original' } }, clock).value, store.read().revision);
+  const later = C.updateProject(store.read(), 'original', payload('900'), store.read().projects[0].revision, now).value;
+  await store.commit(later, store.read().revision);
+  assert.equal((await store.rollback(applied2.value.recoveryPointId, store.read().revision)).ok, false, 'rollback never overwrites later edits');
+  assert.equal(store.read().projects[0].payload.form[0].value, '900');
+  failAll = true;
+  assert.equal((await store.restore(C.planRestore(store.read(), inspection, {}, clock).value, store.read().revision)).ok, false);
+  assert.equal(store.read().projects.length, 1, 'failed batch leaves no partial-visible copy');
+  console.log('PASS recovery: pure copy/replace plans, explicit mapping/shared opt-in, invalid selection, version review, durable recovery points, atomic failures and safe rollback');
+})().catch(error => { console.error(error); process.exitCode = 1; });

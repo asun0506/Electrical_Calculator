@@ -7,7 +7,7 @@
   const uid = () => crypto.randomUUID?.() || 'project-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2);
   const now = () => new Date().toISOString();
   const enqueue = fn => { const result = queue.then(fn).catch(error => { message('操作失败：' + error.message); return C.fail(error.message); }); queue = result.then(() => {}); return result; };
-  function message(text) { if (current?.frame.status) current.frame.status.textContent = text; }
+  function message(text) { if (current?.frame.status) current.frame.status.textContent = text + (currentProject()?.requiresReview ? ' · 备份来源版本不同，需要重新校核' : ''); }
   function captureShared() {
     const materials = window.ElectricalToolkit.get('materials');
     return { ...workspace.shared, materials: materials?.captureShared ? materials.captureShared() : workspace.shared.materials,
@@ -177,6 +177,36 @@
     copy.shared = captureShared();
     return C.ok({ formatVersion: 1, id: uid(), createdAt: now(), appVersion: '2.1.1', workspaceRevision: workspace.revision, projects: copy.projects, queries: copy.queries, shared: copy.shared, preserved: copy.preserved, browserUnsaved: !flushed.ok });
   }
+  async function applyRestore(inspection, options = {}) {
+    const flushed = await flushInternal(); if (!flushed.ok) return flushed;
+    const planned = C.planRestore(workspace, inspection, options, { id: uid, now });
+    if (!planned.ok) return planned;
+    for (const project of planned.value.next.projects.filter(project => planned.value.affected.projectIds.includes(project.id))) {
+      const checked = A.get(project.moduleId)?.validate(project.payload);
+      if (!checked?.ok) return checked || C.fail('恢复项目功能不支持');
+    }
+    if (options.includeShared && planned.value.next.shared.materials) {
+      const checked = window.ElectricalToolkit.get('materials').validateShared(planned.value.next.shared.materials);
+      if (!checked.ok) return checked;
+    }
+    const source = current && { moduleId: current.moduleId, projectId: current.projectId };
+    const written = await store.restore(planned.value, workspace.revision);
+    if (!written.ok) { message('恢复失败：' + written.error.message); return written; }
+    workspace = written.value.state;
+    if (workspace.shared.materials) window.ElectricalToolkit.get('materials').restoreShared(workspace.shared.materials);
+    if (source) mount(source.moduleId, readDraft(source.moduleId), workspace.active[source.moduleId] || null);
+    return written;
+  }
+  async function rollback(pointId) {
+    const flushed = await flushInternal(); if (!flushed.ok) return flushed;
+    const source = current && { moduleId: current.moduleId };
+    const written = await store.rollback(pointId, workspace.revision);
+    if (!written.ok) return written;
+    workspace = written.value;
+    if (workspace.shared.materials) window.ElectricalToolkit.get('materials').restoreShared(workspace.shared.materials);
+    if (source) mount(source.moduleId, readDraft(source.moduleId), workspace.active[source.moduleId] || null);
+    return written;
+  }
   const api = {
     get enabled() { return enabled; }, initialize, readDraft, currentProject, projects, refreshToolbar, message,
     get store() { return store; }, workspace: () => C.clone(workspace),
@@ -191,6 +221,8 @@
     deleteProject: id => enqueue(async () => { const saved = await flushInternal(); if (!saved.ok) return saved; const removed = C.removeProject(workspace, id); if (!removed.ok) return removed; const result = await commit(removed.value); if (result.ok) mount(current.moduleId, readDraft(current.moduleId), workspace.active[current.moduleId]); return result; }),
     reset: () => enqueue(async () => { const saved = await flushInternal(); if (!saved.ok) return saved; const source = { ...current, payload: current.adapter.capture(current.frame.host) }; try { mount(source.moduleId, null, source.projectId); lastSaved = ''; return await flushInternal(); } catch (error) { mount(source.moduleId, source.payload, source.projectId); return C.fail(error.message); } }),
     captureWorkspace,
+    applyRestore: (inspection, options) => enqueue(() => applyRestore(inspection, options)),
+    rollback: id => enqueue(() => rollback(id)),
   };
   window.ElectricalProjectController = api;
 })();

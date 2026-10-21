@@ -70,5 +70,54 @@
     if (next.active[item.moduleId] === id) next.active[item.moduleId] = next.projects.find(other => other.moduleId === item.moduleId).id;
     return ok(next);
   }
-  return Object.freeze({ ok, fail, clone, idValid, nameValid, dateValid, validJSON, validatePayload, validateProject, validateWorkspace, createWorkspace, createProject, updateProject, renameProject, removeProject });
+  function planRestore(state, inspection, options = {}, clock = {}) {
+    try {
+      if (!validateWorkspace(state).ok || !inspection || !Array.isArray(inspection.validProjects)) throw new Error('恢复来源或工作区无效');
+      const mode = options.mode || 'copy';
+      if (!['copy', 'replace'].includes(mode)) throw new Error('恢复方式无效');
+      const selected = options.projectIds || inspection.validProjects.map(project => project.id);
+      if (!Array.isArray(selected) || new Set(selected).size !== selected.length) throw new Error('恢复项目选择无效');
+      let next = clone(state);
+      const affected = { projectIds: [], createdIds: [], sharedKeys: [], queryIds: [] }, usedTargets = new Set();
+      for (const sourceId of selected) {
+        const source = inspection.validProjects.find(project => project.id === sourceId);
+        if (!source || !validateProject(source)) throw new Error('选择包含损坏或不存在的项目');
+        const now = clock.now ? clock.now() : new Date().toISOString();
+        const review = source.appVersion !== (options.currentAppVersion || '2.1.1');
+        const origin = { id: source.id, appVersion: source.appVersion, adapterVersion: source.adapterVersion, snapshotId: inspection.manifest?.snapshot?.id || '' };
+        if (mode === 'copy') {
+          const id = clock.id ? clock.id() : globalThis.crypto?.randomUUID?.();
+          const name = [...source.name].slice(0, 110).join('') + '（恢复副本）';
+          const created = createProject(next, { ...source, name, payload: source.payload }, { id, now });
+          if (!created.ok) throw new Error(created.error.message);
+          next = created.value;
+          const project = next.projects.find(project => project.id === id);
+          project.restoredFrom = origin; project.requiresReview = review;
+          affected.projectIds.push(id); affected.createdIds.push(id);
+        } else {
+          const targetId = options.targets?.[sourceId], target = next.projects.find(project => project.id === targetId);
+          if (!target || target.moduleId !== source.moduleId || usedTargets.has(targetId)) throw new Error('请为每个项目明确选择同功能且不重复的替换目标');
+          usedTargets.add(targetId);
+          const updated = updateProject(next, targetId, source.payload, target.revision, now);
+          if (!updated.ok) throw new Error(updated.error.message);
+          next = updated.value;
+          const project = next.projects.find(project => project.id === targetId);
+          project.restoredFrom = origin; project.requiresReview = review;
+          project.adapterVersion = source.adapterVersion; project.appVersion = source.appVersion;
+          affected.projectIds.push(targetId);
+        }
+      }
+      // Restoring copies does not silently switch an existing active project.
+      for (const [moduleId, id] of Object.entries(state.active)) next.active[moduleId] = id;
+      if (options.includeShared) {
+        for (const [kind, value] of Object.entries(inspection.shared || {})) { next.shared[kind] = clone(value); affected.sharedKeys.push(kind); }
+        for (const [id, value] of Object.entries(inspection.queries || {})) { if (!validatePayload(value).ok) throw new Error('查询快照无效'); next.queries[id] = clone(value); affected.queryIds.push(id); }
+        if (Array.isArray(inspection.preserved)) next.preserved.push(...clone(inspection.preserved));
+      }
+      if (!selected.length && !affected.sharedKeys.length && !affected.queryIds.length) throw new Error('请至少选择一个有效项目或公共数据');
+      if (!validateWorkspace(next).ok) throw new Error('恢复后的工作区无效');
+      return ok({ next, affected });
+    } catch (error) { return fail(error.message, 'restore'); }
+  }
+  return Object.freeze({ ok, fail, clone, idValid, nameValid, dateValid, validJSON, validatePayload, validateProject, validateWorkspace, createWorkspace, createProject, updateProject, renameProject, removeProject, planRestore });
 });

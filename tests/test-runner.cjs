@@ -11,6 +11,7 @@ assert.deepEqual(runner.groups.unit, [
   'tests/backup-format.cjs',
   'tests/backup-io.cjs',
   'tests/backup-zip.cjs',
+  'tests/workspace-recovery.cjs',
   'tests/math-render.cjs',
   'tests/bolt-torque-core.cjs',
   'tests/safety.cjs',

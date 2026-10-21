@@ -5,6 +5,7 @@
   const META_KEY = 'electrical_workspace_backup_status_v1';
   let controller, store, format, io, adapters, dialog = null, message = '', operation = null, inspection = null;
   let lastBackup = window.ElectricalStorage.readJson(META_KEY).value || null;
+  let transferModule = null;
   function setMessage(text) { message = text; const node = dialog?.querySelector('[data-backup-state]'); if (node) node.textContent = text; }
   function refreshState() {
     if (!dialog) return;
@@ -29,7 +30,7 @@
       else await backupAll(action);
     });
     dialog.querySelector('[data-backup-import]').onchange = async event => { const file = event.target.files[0]; if (file) await inspectInput('zip', file); event.target.value = ''; };
-    dialog.addEventListener('close', () => { dialog.remove(); dialog = null; trigger?.focus(); }, { once: true });
+    dialog.addEventListener('close', () => { dialog.remove(); dialog = null; transferModule = null; trigger?.focus(); }, { once: true });
     document.body.append(dialog); dialog.showModal(); refreshState();
     if (api.refreshRecoveryPoints) api.refreshRecoveryPoints();
   }
@@ -88,7 +89,58 @@
   async function projectTransfer(action) {
     show();
     if (action === 'export') return backupAll('zip', { projectOnly: true });
+    transferModule = controller.session()?.moduleId || null;
     dialog.querySelector('[data-backup-import]').click(); return C.ok(null);
+  }
+  function renderRestorePreview(value) {
+    const host = dialog?.querySelector('[data-backup-preview]');
+    if (!host) return;
+    const current = controller.workspace();
+    host.innerHTML = `<h3>恢复预览</h3><p>快照时间：${esc(value.manifest.snapshot.createdAt)}。默认新增副本，不覆盖已有工作。</p><label>恢复方式<select data-restore-mode><option value="copy">另存为副本（推荐）</option><option value="replace">替换明确指定的现有项目</option></select></label><div class="restore-project-list">${value.validProjects.map(project => {
+      const allowed = !transferModule || transferModule === project.moduleId;
+      return `<div class="restore-project-row"><label><input type="checkbox" data-restore-project value="${esc(project.id)}" ${allowed ? 'checked' : 'disabled'}><span>${esc(window.ElectricalToolkit.get(project.moduleId)?.title || project.moduleId)} / ${esc(project.name)}${allowed ? '' : '（不属于当前功能）'}</span></label><label data-target-label hidden>替换目标<select data-restore-target data-source-id="${esc(project.id)}"><option value="">请选择替换目标</option>${current.projects.filter(item => item.moduleId === project.moduleId).map(target => `<option value="${esc(target.id)}">${esc(target.name)} / ${esc(target.id.slice(-8))}</option>`).join('')}</select></label></div>`;
+    }).join('')}</div>${value.invalidProjects.length ? `<div class="restore-warnings"><p>以下项目不能恢复：</p><ul>${value.invalidProjects.map(item => `<li>${esc(item.name || item.id)}：${esc(item.reason)}</li>`).join('')}</ul><label><input type="checkbox" data-restore-skip-invalid>我已了解问题，仅恢复已选择的有效项目</label></div>` : ''}<label class="restore-check"><input type="checkbox" data-restore-shared>同时恢复公共用户材料、查询状态和显示设置（默认不覆盖）</label><button type="button" class="btn btn-primary" data-restore-apply>恢复已选内容</button>`;
+    host.querySelector('[data-restore-mode]').onchange = event => host.querySelectorAll('[data-target-label]').forEach(label => { label.hidden = event.target.value !== 'replace'; });
+    host.querySelector('[data-restore-apply]').onclick = async event => {
+      if (operation) { setMessage('备份仍在进行，请稍后恢复'); return; }
+      if (value.invalidProjects.length && !host.querySelector('[data-restore-skip-invalid]').checked) { setMessage('请先确认已了解不能恢复的项目'); return; }
+      const projectIds = [...host.querySelectorAll('[data-restore-project]:checked')].map(input => input.value), mode = host.querySelector('[data-restore-mode]').value;
+      const includeShared = host.querySelector('[data-restore-shared]').checked;
+      const targets = Object.fromEntries([...host.querySelectorAll('[data-restore-target]')].map(select => [select.dataset.sourceId, select.value]));
+      const plan = C.planRestore(controller.workspace(), value, { projectIds, mode, includeShared, targets });
+      if (!plan.ok) { setMessage('恢复未执行：' + plan.error.message); return; }
+      if ((mode === 'replace' || includeShared) && !confirm('本次将替换你明确选定的项目或公共数据。系统会先持久化恢复点，其他未选项目不受影响。确定继续？')) return;
+      const button = event.currentTarget; button.disabled = true;
+      try {
+        const result = await controller.applyRestore(value, { projectIds, mode, includeShared, targets });
+        setMessage(result.ok ? '恢复已完成，输入已按当前算法重新计算。可以切换项目继续工作；恢复前的数据已保存在恢复点。' : '恢复失败，原工作内容保留：' + result.error.message);
+        if (result.ok) await refreshRecoveryPoints();
+      } finally { button.disabled = false; }
+    };
+  }
+  async function refreshRecoveryPoints() {
+    const host = dialog?.querySelector('[data-recovery-points]');
+    if (!host) return;
+    const points = (await store.listRecoveryPoints()).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    if (!host.isConnected) return;
+    host.innerHTML = `<h3>恢复点</h3>${points.length ? points.map(point => `<div class="recovery-point-row"><span>${esc(point.createdAt.replace('T', ' ').slice(0, 19))}</span><button type="button" data-recovery-rollback="${esc(point.id)}">回退此次恢复</button><button type="button" data-recovery-copy="${esc(point.id)}">另存旧项目副本</button></div>`).join('') : '<p>尚无恢复点；每次恢复提交前会自动保留。</p>'}`;
+    host.querySelectorAll('[data-recovery-rollback]').forEach(button => button.onclick = async () => {
+      if (operation) { setMessage('请先等待当前备份完成'); return; }
+      if (!confirm('回退此次恢复涉及的数据？若恢复后有新编辑，系统会阻止覆盖，其他项目保持不变。')) return;
+      button.disabled = true;
+      const result = await controller.rollback(button.dataset.recoveryRollback);
+      setMessage(result.ok ? '已回退，原项目内容已恢复。' : '无法直接回退：' + result.error.message);
+      await refreshRecoveryPoints();
+    });
+    host.querySelectorAll('[data-recovery-copy]').forEach(button => button.onclick = async () => {
+      const loaded = await store.readRecoveryPoint(button.dataset.recoveryCopy);
+      if (!loaded.ok) { setMessage(loaded.error.message); return; }
+      const point = loaded.value, selected = point.state.projects.filter(project => point.scope.projectIds?.includes(project.id));
+      const source = { manifest: { snapshot: { id: point.id } }, validProjects: selected, invalidProjects: [], queries: {}, shared: {}, preserved: [] };
+      const result = await controller.applyRestore(source, { mode: 'copy' });
+      setMessage(result.ok ? '恢复点中的旧项目已另存副本，现有工作未被覆盖。' : '另存失败：' + result.error.message);
+      await refreshRecoveryPoints();
+    });
   }
   function mount(options = {}) {
     controller = options.controller || window.ElectricalProjectController;
@@ -97,11 +149,11 @@
     let button = document.querySelector('[data-open-backups]');
     if (!button) {
       button = document.createElement('button'); button.type = 'button'; button.className = 'workspace-backup-entry'; button.dataset.openBackups = '';
-      button.textContent = '备份与恢复'; button.addEventListener('click', show); document.querySelector('.sidebar-footer').prepend(button);
+      button.textContent = '备份与恢复'; button.addEventListener('click', () => { transferModule = null; show(); }); document.querySelector('.sidebar-footer').prepend(button);
     }
     return api;
   }
-  const api = { mount, show, close, backupAll, inspectInput, projectTransfer, getInspection: () => inspection,
+  const api = { mount, show, close, backupAll, inspectInput, projectTransfer, renderRestorePreview, refreshRecoveryPoints, getInspection: () => inspection,
     getContext: () => ({ controller, store, format, io, adapters, dialog }), message: setMessage, esc };
   window.ElectricalBackupUI = api;
 })();

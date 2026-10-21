@@ -1065,5 +1065,8 @@ body { background: var(--bg); line-height: 1.55; }
 .backup-actions{display:flex;gap:10px;flex-wrap:wrap}.backup-actions button,.backup-file-label{padding:8px 12px;border:1px solid #aabcca;background:#fff;border-radius:3px;cursor:pointer;font-size:13px;color:#173b5e}
 .backup-actions .btn-primary{color:#fff;background:#173b5e}.backup-actions .backup-file-label{margin:0;display:inline-flex;align-items:center}
 .backup-file-label input{max-width:190px;margin-left:8px}.backup-footnote{font-size:12px;color:#637689;border-top:1px solid #d5dfe7;padding-top:12px}
+.restore-project-list{border:1px solid #cbd7e1;max-height:260px;overflow:auto;margin:10px 0}.restore-project-row{padding:8px 12px;border-bottom:1px solid #e1e7ed}.restore-project-row:last-child{border-bottom:0}
+.restore-project-row label:first-child,.restore-check,.restore-warnings label{display:flex;align-items:flex-start;gap:8px}.restore-project-row input,.restore-check input,.restore-warnings input{width:auto;flex-shrink:0;margin-top:4px}.restore-project-row [hidden]{display:none}
+.restore-warnings{padding:10px;background:#fff6e3;border-left:3px solid #a77624}.recovery-point-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid #d6dfe7;padding:9px 0;font-size:12px}.recovery-point-row span{flex:1 1 150px}
 @media(max-width:700px){.project-selector{width:100%}.project-selector select{flex:1;min-width:0}.workspace-dialog{padding:16px}}
 @media print{.project-toolbar,.workspace-dialog,.workspace-backup-entry{display:none!important}}
