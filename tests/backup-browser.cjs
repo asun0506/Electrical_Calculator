@@ -38,6 +38,16 @@ const { chromium } = require('playwright');
     assert.match(await page.locator('[data-backup-state]').textContent(), /新修改未备份/);
     const frozen = await page.evaluate(async () => { const checked = await ElectricalBackupFormat.inspect(window.__frozenFiles, { adapters: ElectricalProjectAdapters }); return checked.value.validProjects.find(x => x.moduleId === 'bolt').payload.model.meta.projectName; });
     assert.notEqual(frozen, '备份进行中的新编辑');
+    await page.evaluate(() => {
+      const real = ElectricalBackupIO.createBackupIO(window);
+      ElectricalBackupUI.mount({ io: { ...real, writeDirectory: async () => ({ ok: true, value: { directoryName: 'clean-snapshot' } }) } });
+    });
+    await page.evaluate(() => ElectricalBackupUI.backupAll('directory'));
+    await page.locator('[data-close-backups]').click();
+    await page.locator('[data-meta=projectName]').fill('备份结束之后的编辑');
+    await page.evaluate(() => ElectricalProjectController.flush());
+    await page.locator('[data-open-backups]').click();
+    assert.match(await page.locator('[data-backup-state]').textContent(), /新修改未备份/, 'later edits must invalidate a completed backup status');
     await page.evaluate(() => { Storage.prototype.setItem = () => { throw Error('quota'); }; IDBObjectStore.prototype.put = () => { throw Error('quota'); }; });
     await page.locator('[data-close-backups]').click();
     await page.locator('[data-meta=projectName]').fill('内存未保存也要备份');

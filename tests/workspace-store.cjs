@@ -56,6 +56,17 @@ function environment() {
   assert.equal((await conflict.ready).ok, false, 'equal revision divergent durable copies never silently overwrite');
   assert.equal(conflict.conflicts().length, 2);
   assert.equal(env.records.get('workspace').shared.sample, 3);
+  assert.equal((await conflict.commit(C.createWorkspace(), 0)).ok, false);
+  assert.equal(typeof conflict.repair, 'function', 'explicit recovery must repair blocked stores without enabling autosave');
+  assert.equal((await conflict.repair(C.createWorkspace(), false)).ok, false, 'repair requires confirmation');
+  assert.equal((await conflict.repair(C.createWorkspace(), true)).ok, true);
+  assert.ok(conflict.read().preserved.length >= 2, 'conflicting raw roots retained in replacement');
+  const damagedEnv = environment(); damagedEnv.records.set('workspace', { id: 'workspace', schemaVersion: 999, revision: 7, raw: 'keep me' });
+  const damaged = createWorkspaceStore(damagedEnv); assert.equal((await damaged.ready).ok, false);
+  assert.ok(damaged.conflicts().length, 'malformed raw record retained for export');
+  assert.equal((await damaged.repair(C.createWorkspace(), true)).ok, true);
+  assert.equal(damaged.read().preserved.some(item => item.value?.raw?.includes('keep me')), true);
+  const reopened = createWorkspaceStore(damagedEnv); assert.equal((await reopened.ready).ok, true);
   const fallbackEnv = environment(); fallbackEnv.failDB = true;
   const fallback = createWorkspaceStore(fallbackEnv); await fallback.ready;
   assert.equal((await fallback.commit(C.createWorkspace(), 0)).ok, true);

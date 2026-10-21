@@ -59,6 +59,31 @@ const { pathToFileURL } = require('node:url'), { chromium } = require('playwrigh
     assert.equal(failedBatch.ok, false);
     assert.deepEqual(await page.evaluate(() => ElectricalProjectController.workspace()), beforeFailure, 'aborted real IDB batch plus local quota leaves every existing project unchanged');
     assert.deepEqual(errors, []);
+    // A genuinely damaged root still permits the explicitly confirmed repair path.
+    const damagedPage = await browser.newPage();
+    await damagedPage.goto(pathToFileURL(path.join(__dirname, '..', 'index.html')).href);
+    await damagedPage.evaluate(() => ElectricalToolkit.open('conductor'));
+    await damagedPage.evaluate(async () => {
+      const db = await new Promise((resolve, reject) => { const request = indexedDB.open('electrical-toolkit-workspaces'); request.onsuccess = () => resolve(request.result); request.onerror = reject; });
+      await new Promise((resolve, reject) => { const tx = db.transaction('records', 'readwrite'); tx.objectStore('records').put({ id: 'workspace', schemaVersion: 999, revision: 50, raw: 'damaged original retained' }); tx.oncomplete = resolve; tx.onerror = reject; }); db.close();
+    });
+    await damagedPage.reload();
+    await damagedPage.waitForFunction(() => ElectricalProjectController.enabled);
+    const repaired = await damagedPage.evaluate(async bytes => {
+      const io = ElectricalBackupIO.createBackupIO(window), read = await io.readZip(new Uint8Array(bytes));
+      const inspected = await ElectricalBackupFormat.inspect(read.value, { adapters: ElectricalProjectAdapters });
+      const c = ElectricalProjectController;
+      const refused = await c.applyRestore(inspected.value);
+      const accepted = await c.applyRestore(inspected.value, { repairConfirmed: true, includeShared: true });
+      return { refused, accepted, workspace: c.workspace(), moduleId: c.session()?.moduleId };
+    }, zipBytes);
+    assert.equal(repaired.refused.ok, false); assert.equal(repaired.accepted.ok, true);
+    assert.ok(repaired.workspace.preserved.some(item => JSON.stringify(item).includes('damaged original retained')));
+    assert.equal(repaired.moduleId, 'precharge', 'repair opens an actual restored project, not an orphaned editor');
+    assert.equal(await damagedPage.locator('#pc-v').inputValue(), '750');
+    await damagedPage.reload(); await damagedPage.waitForSelector('#pc-v');
+    assert.equal(await damagedPage.locator('#pc-v').inputValue(), '750', 'repaired browser resumes after reload');
+    await damagedPage.close();
     console.log('PASS backup restore UI: ZIP preview/cancel, default copy, explicit replacement, recovery-point rollback and reload');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

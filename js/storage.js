@@ -110,7 +110,7 @@
           });
         } catch (cause) { return { ok: false, error: errorFor(cause) }; }
       }
-      async function compareAndPut(value, expectedRevision, extras = []) {
+      async function compareAndPut(value, expectedRevision, extras = [], expectedRaw) {
         const opened = await ready;
         if (!opened.ok) return opened;
         try {
@@ -122,7 +122,7 @@
             const request = objectStore.get(value.id);
             request.onsuccess = () => {
               try {
-              if ((request.result?.revision || 0) !== expectedRevision) {
+              if ((request.result?.revision || 0) !== expectedRevision || expectedRaw !== undefined && JSON.stringify(request.result || null) !== expectedRaw) {
                 conflict = { ok: false, error: { code: 'conflict', message: '工作区已被其他页面修改，请刷新或另存副本' } };
                 transaction.abort(); return;
               }

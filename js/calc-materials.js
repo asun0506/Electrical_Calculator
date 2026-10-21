@@ -73,7 +73,12 @@
     id: 'materials',
     captureShared: () => JSON.parse(JSON.stringify({ overrides, customs })),
     validateShared(value) {
-      const valid = window.ElectricalSafety.isPlainObject(value) && window.ElectricalSafety.isPlainObject(value.overrides) && window.ElectricalSafety.isPlainObject(value.customs);
+      const plain = window.ElectricalSafety.isPlainObject;
+      const material = item => plain(item) && Object.entries(item).every(([key, field]) => key === 'curve'
+        ? Array.isArray(field) && field.length <= 10000 && field.every(point => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite))
+        : field == null || typeof field === 'string' || typeof field === 'number' && Number.isFinite(field));
+      const valid = plain(value) && plain(value.overrides) && plain(value.customs) && Object.values(value.overrides).every(material)
+        && Object.values(value.customs).every(item => material(item) && CATS.includes(item.category) && typeof item.name === 'string');
       return valid ? { ok: true, value: JSON.parse(JSON.stringify(value)) } : { ok: false, error: { code: 'invalid', message: '用户材料库格式无效' } };
     },
     restoreShared(value) {

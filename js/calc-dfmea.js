@@ -220,6 +220,7 @@
   function englishRow(data){const translated={...data};FIELDS.forEach((field)=>{translated[field]=englishCell(data[field],data,field);});return translated;}
 
   async function exportXlsx(language='zh'){
+    const exportSession=E.editSession();
     if(!state.rows.length){alert('请先添加至少一行DFMEA内容。');return;} if(!window.JSZip||!window.DFMEA_TEMPLATE_BASE64){alert('Excel模板组件未加载，请确认工具目录完整。');return;}
     const english=language==='en',button=hostRef.querySelector(english?'#dfExportXlsxEn':'#dfExportXlsx'),label=english?'导出英文DFMEA':'按原模板导出DFMEA';button.disabled=true;button.textContent='正在生成…';
     try{
@@ -228,7 +229,9 @@
       [...sheetData.getElementsByTagNameNS(ns,'row')].filter(r=>+r.getAttribute('r')>=15).forEach(r=>sheetData.removeChild(r));
       state.rows.map((data)=>english?englishRow(data):data).forEach((data,index)=>{const no=15+index,rowEl=template.cloneNode(true),maxLength=Math.max(...FIELDS.map(f=>String(data[f]||'').length));rowEl.setAttribute('r',String(no));rowEl.setAttribute('ht',String(Math.min(405,Math.max(60,Math.ceil(maxLength/16)*15))));rowEl.setAttribute('customHeight','1');[...rowEl.getElementsByTagNameNS(ns,'c')].forEach(c=>{c.setAttribute('r',`${colName(c.getAttribute('r'))}${no}`);c.setAttribute('s',String(styleId));});FIELDS.forEach(f=>setCell(doc,rowEl,f,no,data[f],['J','N','P'].includes(f),styleId));setCell(doc,rowEl,'Q',no,ap(data.J,data.N,data.P),false,styleId);sheetData.appendChild(rowEl);});
       doc.getElementsByTagNameNS(ns,'dimension')[0].setAttribute('ref',`A1:AE${14+state.rows.length}`);zip.file('xl/worksheets/sheet1.xml',new XMLSerializer().serializeToString(doc));
-      download(await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',compression:'DEFLATE'}),`DFMEA_${english?'EN_':''}${dateTag()}.xlsx`);
+      const blob=await zip.generateAsync({type:'blob',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',compression:'DEFLATE'});
+      if(!E.editSessionCurrent(exportSession))throw new Error('项目已切换，本次导出已取消，请在目标项目重新导出。');
+      download(blob,`DFMEA_${english?'EN_':''}${dateTag()}.xlsx`);
     }catch(error){console.error(error);alert('DFMEA导出失败：'+error.message);}finally{button.disabled=false;button.textContent=label;}
   }
   function styles(){return `
@@ -238,7 +241,7 @@
     @media(max-width:850px){.df-intro{align-items:flex-start;flex-direction:column}.df-filters{grid-template-columns:1fr 1fr}.df-filters label:first-child{grid-column:1/-1}.df-lib-row{grid-template-columns:24px 120px 1fr 60px}.df-lib-row>span:nth-of-type(3){display:none}}`}
 
   T.register({id:'dfmea',title:'DFMEA生成器',icon:'🧩',group:'工程文档与评审',desc:'基于原版Excel模板建立动力电池电气系统与部件两级DFMEA，子零件分析整合在部件行中。',
-    validateDraft:saved=>saved&&Array.isArray(saved.rows)&&saved.rows.every(row=>window.ElectricalSafety.isPlainObject(row)&&Object.entries(row).every(([key,value])=>key==='tags'?Array.isArray(value)&&value.every(tag=>typeof tag==='string'):value==null||['string','number','boolean'].includes(typeof value))),
+    validateDraft:saved=>saved&&['query','level','family'].every(key=>typeof saved[key]==='string')&&Array.isArray(saved.rows)&&saved.rows.length<=10000&&saved.rows.every(row=>window.ElectricalSafety.isPlainObject(row)&&Object.entries(row).every(([key,value])=>key==='tags'?Array.isArray(value)&&value.every(tag=>typeof tag==='string'):value==null||['string','number','boolean'].includes(typeof value))),
     captureDraft(){return {version:LIB.version,query:state.query,level:state.level,family:state.family,rows:state.rows};},
     restoreDraft(saved){
       const rows=migrateRows(saved.rows||[],saved.version);

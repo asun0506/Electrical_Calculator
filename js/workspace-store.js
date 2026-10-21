@@ -35,9 +35,40 @@
     const ready = records.getAll().then(result => {
       if (result.ok) points = result.value.filter(item => item.kind === 'recovery-point');
       const selection = reconcile(result, readLocal());
-      if (!selection.ok) { blocked = selection; return selection; }
+      if (!selection.ok) { blocked = selection; if (!conflicts.length) conflicts = rawCopies(result); return selection; }
       current = C.clone(selection.value.state); return C.ok(C.clone(current));
     });
+    function rawCopies(dbResult) {
+      const head = storage.readText(PREFIX + 'head');
+      return [
+        ...(dbResult.ok ? dbResult.value.filter(item => item.id === 'workspace').map(value => ({ source: 'IndexedDB', raw: JSON.stringify(value) })) : []),
+        { source: 'localStorage', head: head.value || '', raw: head.value ? storage.readText(PREFIX + 'data:' + head.value).value || '' : '' },
+      ];
+    }
+    // Only an explicitly confirmed recovery may bypass a damaged head. Originals travel
+    // with the replacement; compare-and-put still rejects another tab's intervening write.
+    async function repair(next, confirmed) {
+      await ready;
+      if (!blocked || confirmed !== true || !C.validateWorkspace(next).ok) return C.fail('需要明确确认有效备份重建，普通保存不能覆盖损坏数据');
+      if (!environment.navigator?.locks?.request) return C.fail('浏览器不支持安全重建锁，请使用支持的浏览器恢复', 'unavailable');
+      return environment.navigator.locks.request('electrical-workspace-write-v1', async () => {
+        const dbResult = await records.getAll(), originals = rawCopies(dbResult);
+        const rawRoot = dbResult.ok ? dbResult.value.find(item => item.id === 'workspace') : null;
+        const record = C.clone(next);
+        record.preserved.push(...originals.map(value => ({ moduleId: '', source: 'damaged-workspace', value, reason: blocked.error.message })));
+        const revisions = originals.map(item => { try { const revision = JSON.parse(item.raw).revision; return Number.isSafeInteger(revision) && revision >= 0 ? revision : 0; } catch (_) { return 0; } });
+        record.revision = Math.max(current.revision, ...revisions) + 1;
+        record.commitId = uid();
+        if (!C.validateWorkspace(record).ok) return C.fail('原始数据保留失败，未执行重建');
+        const point = { id: 'recovery-' + uid(), kind: 'recovery-point', createdAt: new Date().toISOString(), scope: { projectIds: [], sharedKeys: [], queryIds: [] }, state: C.clone(current), rawCopies: originals };
+        const dbWrite = dbResult.ok ? await records.compareAndPut(record, rawRoot?.revision || 0, [point], JSON.stringify(rawRoot || null)) : dbResult;
+        if (dbResult.ok && !dbWrite.ok) return dbWrite;
+        const localWrite = localCommit(record, [point]);
+        if (!dbWrite.ok && !localWrite.ok) return C.fail('重建保存失败，原始数据未删除', 'unavailable');
+        current = record; blocked = null; points.push(point);
+        return C.ok(C.clone(record));
+      });
+    }
     function localCommit(next, extras = []) {
       for (const item of extras) {
         const written = storage.writeJson(PREFIX + 'point:' + item.id, item);
@@ -138,7 +169,7 @@
       const written = await restore({ next, affected: scope }, expectedRevision);
       return written.ok ? C.ok(written.value.state) : written;
     }
-    return { ready, read: () => C.clone(current), commit, createRecoveryPoint, listRecoveryPoints, readRecoveryPoint, restore, rollback, conflicts: () => C.clone(conflicts) };
+    return { ready, read: () => C.clone(current), commit, repair, blocked: () => !!blocked, createRecoveryPoint, listRecoveryPoints, readRecoveryPoint, restore, rollback, conflicts: () => C.clone(conflicts) };
   }
   return Object.freeze({ createWorkspaceStore, PREFIX });
 });

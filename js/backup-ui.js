@@ -12,7 +12,8 @@
     const directory = io.directoryStatus();
     dialog.querySelector('[data-backup-directory]').textContent = directory.name ? '备份目录：' + directory.name + '（' + directory.permission + '）' : '尚未选择备份目录；也可以直接下载 ZIP。';
     dialog.querySelector('[data-backup-last]').textContent = lastBackup ? '最近已验证目录备份：' + lastBackup.createdAt.replace('T', ' ').slice(0, 19) + '，工作区版本 ' + lastBackup.revision : '尚未完成本地目录备份';
-    if (message) setMessage(message);
+    const dirty = lastBackup && (lastBackup.revision !== controller.workspace().revision || lastBackup.editRevision !== controller.editRevision());
+    if (message) { const historical = message.replace(/；当前有新修改未备份。/g, ''); setMessage(historical + (dirty ? '；当前有新修改未备份。' : '')); }
     else setMessage(lastBackup ? (lastBackup.revision === controller.workspace().revision && lastBackup.editRevision === controller.editRevision() ? '当前工作区已有目录备份' : '有工作内容尚未备份') : '工作内容尚未备份');
   }
   function close() { if (dialog?.open) dialog.close(); }
@@ -106,14 +107,16 @@
       if (value.invalidProjects.length && !host.querySelector('[data-restore-skip-invalid]').checked) { setMessage('请先确认已了解不能恢复的项目'); return; }
       const projectIds = [...host.querySelectorAll('[data-restore-project]:checked')].map(input => input.value), mode = host.querySelector('[data-restore-mode]').value;
       const includeShared = host.querySelector('[data-restore-shared]').checked;
+      const repairConfirmed = store.blocked();
+      if (repairConfirmed && !confirm('当前浏览器工作区已损坏或冲突。是否保留原始记录，并使用选定的有效备份重建工作区？普通保存仍被阻止，未选备份内容不会自动恢复。')) return;
       const targets = Object.fromEntries([...host.querySelectorAll('[data-restore-target]')].map(select => [select.dataset.sourceId, select.value]));
       const plan = C.planRestore(controller.workspace(), value, { projectIds, mode, includeShared, targets });
       if (!plan.ok) { setMessage('恢复未执行：' + plan.error.message); return; }
       if ((mode === 'replace' || includeShared) && !confirm('本次将替换你明确选定的项目或公共数据。系统会先持久化恢复点，其他未选项目不受影响。确定继续？')) return;
       const button = event.currentTarget; button.disabled = true;
       try {
-        const result = await controller.applyRestore(value, { projectIds, mode, includeShared, targets });
-        setMessage(result.ok ? '恢复已完成，输入已按当前算法重新计算。可以切换项目继续工作；恢复前的数据已保存在恢复点。' : '恢复失败，原工作内容保留：' + result.error.message);
+        const result = await controller.applyRestore(value, { projectIds, mode, includeShared, targets, repairConfirmed });
+        setMessage(result.ok ? '恢复已完成，输入已按当前算法重新计算。可以切换项目继续工作；恢复前的数据已保存在恢复点。' : '恢复未完成：' + result.error.message);
         if (result.ok) await refreshRecoveryPoints();
       } finally { button.disabled = false; }
     };

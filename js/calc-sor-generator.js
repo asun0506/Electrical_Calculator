@@ -620,6 +620,7 @@
   }
 
   async function buildDocx() {
+    const exportSession = E.editSession();
     const zip = await JSZip.loadAsync(TEMPLATE.base64, { base64: true });
     let documentXml = await zip.file('word/document.xml').async('string');
     documentXml = fillRepeatableTables(documentXml);
@@ -644,7 +645,9 @@
       else settings = settings.replace('</w:settings>', '<w:updateFields w:val="true"/></w:settings>');
       zip.file('word/settings.xml', settings);
     }
-    return zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
+    const blob = await zip.generateAsync({ type: 'blob', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', compression: 'DEFLATE' });
+    if (!E.editSessionCurrent(exportSession)) throw new Error('项目已切换，本次导出已取消，请在目标项目重新导出。');
+    return blob;
   }
 
   async function withBusy(button, work) {
@@ -668,12 +671,14 @@
   }
 
   function exportPdf(event) {
+    const exportSession = E.editSession(), exportHost = hostRef, exportPreview = previewHost;
     withBusy(event.currentTarget, async () => {
       if (!window.docx || typeof window.docx.renderAsync !== 'function') throw new Error('Word 预览组件未加载');
       const blob = await buildDocx();
-      const shell = hostRef.querySelector('#sorPreviewShell');
+      if (!E.editSessionCurrent(exportSession)) throw new Error('项目已切换，本次预览已取消。');
+      const shell = exportHost.querySelector('#sorPreviewShell');
       shell.classList.add('active');
-      await window.docx.renderAsync(blob, previewHost, null, {
+      await window.docx.renderAsync(blob, exportPreview, null, {
         inWrapper: true,
         hideWrapperOnPrint: false,
         ignoreWidth: false,
@@ -684,6 +689,7 @@
         renderFooters: true,
         renderAltChunks: true,
       });
+      if (!E.editSessionCurrent(exportSession)) throw new Error('项目已切换，本次预览已取消。');
       shell.setAttribute('aria-hidden', 'false');
       const originalParent = shell.parentNode;
       const originalNextSibling = shell.nextSibling;
@@ -693,7 +699,7 @@
         window.removeEventListener('afterprint', restoreShell);
       };
       window.addEventListener('afterprint', restoreShell);
-      setTimeout(() => window.print(), 300);
+      setTimeout(() => { if (E.editSessionCurrent(exportSession)) window.print(); else restoreShell(); }, 300);
     });
   }
 
