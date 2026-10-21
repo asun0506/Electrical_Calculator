@@ -27,6 +27,8 @@ const groups = Object.freeze({
     'tests/standards-library.cjs',
   ],
   unit: [
+    'tests/workspace-core.cjs',
+    'tests/workspace-store.cjs',
     'tests/math-render.cjs',
     'tests/bolt-torque-core.cjs',
     'tests/safety.cjs',
