@@ -4,6 +4,7 @@ const { spawnSync } = require('node:child_process');
 
 const groups = Object.freeze({
   browser: [
+    'tests/projects-manage-browser.cjs',
     'tests/materials-browser.cjs',
     'tests/workspace-review-browser.cjs',
     'tests/projects-browser.cjs',

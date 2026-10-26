@@ -1077,3 +1077,17 @@ body { background: var(--bg); line-height: 1.55; }
 #mt-detail .field{min-width:0;align-self:start}
 #mt-detail>.note{margin-bottom:14px}
 @media print{.mt-reference{font-size:9px;line-height:1.4}}
+
+.project-manager h2{margin:0 0 12px;font-size:21px}
+.project-manager>p{font-size:13px;line-height:1.6}
+.project-manager-list{border:1px solid #cad6e1;max-height:50vh;overflow:auto}
+.project-manager-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-bottom:1px solid #dbe3eb}
+.project-manager-row:last-child{border-bottom:0}
+.project-manager-row>div:first-child{min-width:0;overflow-wrap:anywhere}
+.project-manager-row small{display:block;margin-top:5px;font-size:11px;color:var(--text-muted)}
+.project-manager-actions{display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0}
+.project-manager-actions button{padding:6px 9px;cursor:pointer;border:1px solid #aabcca;border-radius:3px;background:#fff;color:#173b5e}
+.project-manager-actions .project-delete{color:#a82121;border-color:#dca3a3}
+.project-manager-actions button:disabled{opacity:.45;cursor:not-allowed}
+.project-current-badge{display:inline-block;margin-left:8px;padding:2px 6px;font-size:11px;background:#e8f0f6;border-radius:3px}
+@media(max-width:600px){.project-manager-row{align-items:flex-start;flex-direction:column}.project-manager-actions{width:100%}}
