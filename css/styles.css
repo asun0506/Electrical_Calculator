@@ -1070,3 +1070,10 @@ body { background: var(--bg); line-height: 1.55; }
 .restore-warnings{padding:10px;background:#fff6e3;border-left:3px solid #a77624}.recovery-point-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid #d6dfe7;padding:9px 0;font-size:12px}.recovery-point-row span{flex:1 1 150px}
 @media(max-width:700px){.project-selector{width:100%}.project-selector select{flex:1;min-width:0}.workspace-dialog{padding:16px}}
 @media print{.project-toolbar,.workspace-dialog,.workspace-backup-entry{display:none!important}}
+
+/* Material inputs remain primary; source ranges are readable, secondary guidance. */
+.mt-reference{display:grid;gap:5px;margin-top:6px;font-size:11.5px;line-height:1.55;color:var(--text-muted);overflow-wrap:anywhere;min-width:0}
+.mt-reference a{color:var(--primary,#175579);text-decoration:underline;text-underline-offset:2px}
+#mt-detail .field{min-width:0;align-self:start}
+#mt-detail>.note{margin-bottom:14px}
+@media print{.mt-reference{font-size:9px;line-height:1.4}}

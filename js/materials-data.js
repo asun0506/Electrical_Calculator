@@ -1,4 +1,4 @@
-// 材料参数数据库（由 Busbar/材料库 Excel 解析生成）
+// 材料参数数据库：历史 Excel 示例 + 2026-10-26 原厂牌号补充；逐项来源/未核验边界见 material-references.js。
 // 结构：{ name: {category,name,cn,en,abbr,desc,use,E,nu,dens,G,Rp02,Rm,shear,elong,lambda,Cp,melt,rho_e/rho_v,cond,IACS,Ed,curve:[[ε%,σMPa],...]} }
 window.MATERIAL_DB = {
  "Al-1060-O": {
@@ -1534,6 +1534,38 @@ window.MATERIAL_DB = {
   "rho_v": 100000000000000,
   "Ed": 22
  },
+ "PBT+GF20": {
+  "category": "塑料",
+  "name": "PBT+GF20",
+  "cn": "20%玻纤增强PBT（BASF B 4300 G4 FC参考）",
+  "en": "PBT-GF20 (BASF Ultradur B 4300 G4 FC reference)",
+  "abbr": "PBT-GF20",
+  "desc": "20%玻纤增强；标量取原厂参考牌号典型值，不是所有GF20配方的保证值。拉伸强度项为ISO 527断裂应力，不冒充屈服强度；未公开参数留空。",
+  "use": "连接器、开关、电气绝缘结构件；实际设计须核验具体配方、取向、熔接线及环境条件",
+  "E": 7000,
+  "dens": 1.45,
+  "Rm": 118,
+  "elong": 3.5,
+  "lambda": 0.25,
+  "Cp": 1150,
+  "melt": 223,
+  "curve": []
+ },
+ "PBT+ABS+GF20": {
+  "category": "塑料",
+  "name": "PBT+ABS+GF20",
+  "cn": "20%玻纤增强PBT/ABS（MOCOM ALTECH参考）",
+  "en": "PBT/ABS-GF20 (MOCOM ALTECH A 2020/620 GF 20 UV reference)",
+  "abbr": "(PBT+ABS)-GF20",
+  "desc": "20%玻纤PBT/ABS合金；参考MOCOM ALTECH A 2020/620 GF 20 UV原厂署名数据表。6200 MPa为拉伸模量，不是5600 MPa弯曲模量；75 MPa为断裂应力；未公开参数不推算填入。",
+  "use": "注塑电气壳体、支架等；牌号、阻燃/耐候配方和测试条件须另行确认",
+  "E": 6200,
+  "dens": 1.33,
+  "Rm": 75,
+  "elong": 2,
+  "melt": 226,
+  "curve": []
+ },
  "PBT+GF30": {
   "category": "塑料",
   "name": "PBT+GF30",
@@ -1581,6 +1613,8 @@ window.MATERIAL_DB = {
   "use": "连接器、线圈骨架、电机/泵壳、汽车电气壳体、结构支架与精密零件",
   "G": 3700,
   "Rp02": 130,
+  "Rm": 140,
+  "elong": 3,
   "shear": 90,
   "lambda": 0.35,
   "Cp": 1100,

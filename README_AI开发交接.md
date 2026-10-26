@@ -116,6 +116,8 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 
 原理图另有 `restoreProjectDraft(model)`：经校验的当前 schema 11 工作快照精确克隆，避免 null/未定义可选字段因重复归一化改变默认绘图指纹。原 `restoreDraft` 和 JSON 导入仍执行既有 normalize 迁移；不能为此更新既有 golden 指纹。
 
+材料页维护 `material-references.js` 独立离线参考目录；不回写共享材料覆盖值。材料草稿 `layoutVersion:2` 使用属性/曲线稳定 ID，`CalculatorDrafts.restore` 在重放前可调用模块可选的 `prepareDraft(payload)`；目前仅材料页用来映射旧匿名索引字段。新增参数时须保持此兼容路径，同名用户材料优先于新内置条目。来源口径、未核验覆盖和验证记录见 [材料参数库审视](docs/materials-reference-audit.md)。
+
 恢复点独立保存，不嵌套进下一恢复点；批量恢复失败不提前更新 UI/cache。回退只改受影响项目/公共键，后续编辑冲突时拒绝覆盖。损坏/冲突的根记录会阻止普通保存；专用 `store.repair(next, true)` 仅在用户明确确认后使用浏览器锁与原始记录比较重建，保留两份原始记录到 `preserved` 和恢复点，不删除旧键。控制器 `applyRestore(..., {repairConfirmed:true})` 从空工作区加已选有效备份重建，不能把初始化失败的临时默认项目当作可靠旧数据。恢复点是浏览器内保护，定期导出的时间快照才是浏览器数据丢失后的备份；权限、配额或磁盘故障不会因此修复。
 
 切换/新建/恢复等待持久化时，目标编辑区保持 inert；`lastSaved` 对应已提交快照，不能取等待结束时的任意 UI 内容。SOR Word/PDF 和 DFMEA Excel 的异步生成绑定发起项目会话；会话切换即取消输出，PDF 延迟打印也必须再次检查，不能给新项目套用旧预览或文件名。恢复前必须校验模型中被渲染使用的字段和公共材料的内部条目；意外渲染失败会尝试按恢复点自动回退，失败信息不得无条件声称原数据未变。

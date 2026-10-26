@@ -57,6 +57,7 @@
     };
   }
   function restore(calc, host, saved, projectSnapshot = false) {
+    if (calc.prepareDraft) saved = calc.prepareDraft(saved);
     if (projectSnapshot && calc.restoreProjectDraft && saved.model != null) calc.restoreProjectDraft(saved.model, host);
     else if (calc.restoreDraft && saved.model != null) calc.restoreDraft(saved.model, host);
     else applyForm(host, saved.form, true);

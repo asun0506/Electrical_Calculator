@@ -118,6 +118,8 @@ let browser;
     ElectricalToolkit.get('schematic').restoreDraft(draft);
   });
   await page.locator('#schImport').setInputFiles({ name: 'schematic-legend-roundtrip-test.json', mimeType: 'application/json', buffer: exported });
+  // File.text() is asynchronous; setInputFiles only dispatches the change event.
+  await page.waitForFunction(() => document.querySelector('.sch-legend')?.textContent.includes('低压信号线（自定义）'));
   assert.match(await page.locator('.sch-legend').textContent(), /低压信号线（自定义）/);
   assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().meta.legendNote), 'A&B <test>');
   assert.equal(await page.evaluate(() => ElectricalToolkit.get('schematic').captureDraft().connections[0].gaugeLabelPosition), 'both', 'JSON round trip retains gauge placement');
