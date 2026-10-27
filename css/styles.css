@@ -827,6 +827,10 @@ body { background: var(--bg); line-height: 1.55; }
 .brand h1 { font-size: 15px; font-weight: 650; letter-spacing: .02em; }
 .brand-sub { margin-top: 1px; color: #8295a7; font: 9px var(--mono); letter-spacing: .08em; }
 .nav { gap: 2px; scrollbar-color: #52677a transparent; scrollbar-width: thin; }
+.nav-section { width: 100%; min-width: 0; }
+.nav-section-title { margin: 16px 9px 6px; padding-bottom: 7px; border-bottom: 1px solid #36516a; color: #e4edf5; font-size: 13px; font-weight: 650; letter-spacing: .04em; }
+.nav-subgroup-list { display: flex; flex-direction: column; gap: 2px; }
+.nav-section .nav-group-label { margin-top: 10px; padding-bottom: 2px; border-bottom: 0; font-size: 11px; letter-spacing: .04em; }
 .nav-group-label {
   margin: 15px 9px 5px; color: #74889a; font: 600 10px var(--font);
   letter-spacing: .12em; border-bottom: 1px solid #21394f; padding-bottom: 5px;
@@ -927,6 +931,7 @@ body { background: var(--bg); line-height: 1.55; }
   .sidebar { width: 100%; }
   .content { padding: 18px 14px 30px; }
   .nav-group-label { flex-basis: 100%; }
+  .nav-subgroup-list { flex-direction: row; flex-wrap: wrap; }
   .nav-item { flex: 1 1 180px; }
 }
 

@@ -9,7 +9,7 @@
  *   id:      '唯一标识',                 // 用于路由 / 侧边项 key
  *   title:   '显示名称',
  *   icon:    '可选图标（当前工程主题的导航使用数字编号）',
- *   group:   '分组名',                   // 用于侧边栏分组
+ *   group:   '模块业务分类',             // 导航在 renderNav 中统一归类
  *   desc:    '一句话简介',
  *   render:  function (host) { ... }     // 必填：向 host 容器写入该计算器界面
  * }
@@ -112,24 +112,36 @@
     flush() { return global.ElectricalProjectController ? global.ElectricalProjectController.flush() : Promise.resolve(flushDraft ? flushDraft() : true); },
 
     renderNav() {
-      // 按 group 分组渲染
-      const groups = [];
-      registry.forEach((c) => {
-        const g = c.group || '计算器';
-        if (!groups.includes(g)) groups.push(g);
-      });
-
+      // Navigation taxonomy is separate from module metadata and project IDs.
+      const category = calc => {
+        if (['materials', 'engineering-formulas', 'standards-library'].includes(calc.id)) return '标准知识库';
+        if (calc.group === '电气计算') return '电气校核';
+        if (calc.group === '机械尺寸') return '机械校核';
+        if (calc.group === '成本估算') return '成本估算';
+        return '文件生成';
+      };
+      const sections = [
+        { title: '项目工具', groups: ['电气校核', '机械校核', '文件生成', '成本估算'] },
+        { title: '标准知识库', groups: ['标准知识库'] },
+      ];
       let html = '';
-      groups.forEach((g) => {
-        html += `<div class="nav-group-label">${escapeHtml(g)}</div>`;
-        registry
-          .filter((c) => (c.group || '计算器') === g)
-          .forEach((c) => {
+      sections.forEach(section => {
+        html += `<section class="nav-section" aria-label="${escapeHtml(section.title)}"><div class="nav-section-title">${escapeHtml(section.title)}</div>`;
+        section.groups.forEach(group => {
+          const modules = registry.filter(calc => category(calc) === group);
+          if (!modules.length) return;
+          html += `<div class="nav-subgroup" data-nav-category="${escapeHtml(group)}">`;
+          if (section.title !== group) html += `<div class="nav-group-label">${escapeHtml(group)}</div>`;
+          html += '<div class="nav-subgroup-list">';
+          modules.forEach((c) => {
             const active = c.id === activeId ? ' active' : '';
-            html += `<button class="nav-item${active}" data-id="${escapeHtml(c.id)}">
+            html += `<button class="nav-item${active}" data-id="${escapeHtml(c.id)}" ${active ? 'aria-current="page"' : ''}>
               <span class="ico">${moduleIcon(c.id)}</span><span>${escapeHtml(c.title)}</span>
             </button>`;
           });
+          html += '</div></div>';
+        });
+        html += '</section>';
       });
 
       el.nav.innerHTML = html;

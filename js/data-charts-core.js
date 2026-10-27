@@ -98,6 +98,25 @@
     p.table=normalizeTable(raw.table, raw.type==='scatter',draft);
     return p;
   }
+  function normalizeCollection(raw, options = {}) {
+    if(raw?.schema===1) return {schema:2,activeId:'chart-1',activeByType:{[raw.type]:'chart-1'},charts:[{id:'chart-1',chart:normalizeProject(raw,options)}]};
+    if(!raw||raw.schema!==2) throw new Error('不支持的图表工程版本');
+    if(!Array.isArray(raw.charts)||raw.charts.length<1||raw.charts.length>100) throw new Error('每个项目需要 1–100 张图表');
+    const ids=new Set();
+    const charts=raw.charts.map(item=>{
+      if(!item||typeof item.id!=='string'||!/^[a-zA-Z0-9_-]{1,80}$/.test(item.id)) throw new Error('图表编号无效');
+      if(ids.has(item.id)) throw new Error('图表编号重复');
+      ids.add(item.id);return {id:item.id,chart:normalizeProject(item.chart,options)};
+    });
+    if(!ids.has(raw.activeId))throw new Error('当前图表不存在');
+    const activeByType={};
+    for(const item of charts) {
+      const type=item.chart.type;
+      if(!activeByType[type]||raw.activeByType?.[type]===item.id||raw.activeId===item.id)activeByType[type]=item.id;
+    }
+    activeByType[charts.find(item=>item.id===raw.activeId).chart.type]=raw.activeId;
+    return {schema:2,activeId:raw.activeId,activeByType,charts};
+  }
   function buildOption(raw) {
     const p=normalizeProject(raw), {type,table,settings:s}=p;
     const rows=table.slice(1), categories=rows.map(r=>r[0]), headers=table[0].slice(1);
@@ -147,7 +166,7 @@
     }
     return option;
   }
-  const api={types,palette,defaults,parseDelimited,toCSV,normalizeTable,normalizeProject,buildOption};
+  const api={types,palette,defaults,parseDelimited,toCSV,normalizeTable,normalizeProject,normalizeCollection,buildOption};
   if(typeof module==='object'&&module.exports) module.exports=api;
   else root.DataChartsCore=api;
 })(typeof window==='undefined'?globalThis:window);

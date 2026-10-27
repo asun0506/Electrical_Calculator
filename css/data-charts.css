@@ -2,6 +2,9 @@
 .dc h3,.dc h4,.dc p {margin:0}
 .dc .dc-panel {background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;min-width:0}
 .dc-topline,.dc-actions,.dc-panel-head {display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.dc-chart-toolbar {display:flex;align-items:end;gap:14px;flex-wrap:wrap}
+.dc-current-chart {display:grid;gap:6px;font-size:13px;font-weight:600;flex:1 1 240px;min-width:0;max-width:420px}
+.dc-chart-toolbar .dc-chart-count {align-self:center}
 .dc-panel-head {justify-content:space-between;margin-bottom:16px}
 .dc-note {color:var(--text-muted);font-size:12px;line-height:1.8}
 .dc-gallery {display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-top:16px}
@@ -9,17 +12,22 @@
 .dc-type svg {width:38px;height:38px;flex-shrink:0}
 .dc-type:hover {border-color:#8dbdf5;background:#f7faff}
 .dc-type[aria-pressed=true] {border-color:var(--primary);background:var(--primary-soft);box-shadow:inset 0 0 0 1px var(--primary)}
-.dc-workspace {display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:18px;align-items:start}
+.dc-workspace {display:grid;grid-template-columns:minmax(0,3fr) minmax(420px,2fr);gap:18px;align-items:start}
 .dc-preview {overflow:hidden;padding:0!important}
 .dc-preview .dc-panel-head {padding:16px 20px;margin:0;border-bottom:1px solid var(--border)}
 .dc-preview-stage {padding:16px;background:#f1f4f9;overflow:auto;max-height:850px}
 .dc-chart {background:#fff;width:100%;min-height:260px;box-shadow:0 3px 16px #0f172a0a}
 .dc-preview-footer {padding:10px 20px;font-size:12px;color:var(--text-muted)}
-.dc-settings {max-height:850px;overflow:auto}
+.dc-settings {min-width:0}
 .dc-settings details {border-bottom:1px solid var(--border);padding:12px 0}
 .dc-settings details:last-child {border:0}
 .dc-settings summary {font-weight:600;cursor:pointer;font-size:13px}
 .dc-fields {display:grid;gap:10px;padding-top:12px}
+.dc-settings details>.dc-fields {grid-template-columns:repeat(2,minmax(0,1fr));align-items:start}
+.dc-settings details>.dc-fields>.dc-field-row,
+.dc-settings details>.dc-fields>.dc-note,
+.dc-settings details>.dc-fields>.dc-colors {grid-column:1/-1}
+.dc-settings details>.dc-fields>.dc-check {min-height:30px}
 .dc-field {display:grid;gap:5px;font-size:12px;color:var(--text-muted)}
 .dc input:not([type=checkbox]):not([type=color]),.dc select,.dc textarea {width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font:inherit;background:#fff;color:var(--text);min-width:0}
 .dc input[type=checkbox] {accent-color:var(--primary)}
@@ -43,5 +51,5 @@
 .dc-paste {margin-top:14px}
 .dc-paste textarea {margin:10px 0;min-height:100px;font-family:var(--mono);font-size:12px}
 .dc button:focus-visible,.dc input:focus-visible,.dc select:focus-visible,.dc textarea:focus-visible,.dc summary:focus-visible {outline:2px solid var(--primary);outline-offset:2px}
-@media(max-width:1150px) {.dc-workspace{grid-template-columns:minmax(0,1fr)}.dc-settings{max-height:none}.dc-settings>.dc-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.dc-settings details{padding:12px}.dc-gallery{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
+@media(max-width:1250px) {.dc-workspace{grid-template-columns:minmax(0,1fr)}.dc-settings>.dc-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.dc-settings details{padding:12px}.dc-gallery{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
 @media(max-width:600px) {.dc .dc-panel{padding:14px}.dc-settings>.dc-fields{grid-template-columns:1fr}.dc-actions .btn{padding:6px 10px;font-size:12px}.dc-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}.dc-type{padding:12px 8px;font-size:12px}.dc-type svg{width:28px;height:28px}}

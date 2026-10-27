@@ -1,5 +1,14 @@
 const assert = require('node:assert/strict');
 const C = require('../js/data-charts-core.js');
+const migrated=C.normalizeCollection(C.defaults());
+assert.equal(migrated.schema,2);assert.equal(migrated.charts.length,1);
+assert.equal(migrated.charts[0].chart.settings.title,'数据图表');
+const multiple={schema:2,activeId:'second',charts:[{id:'first',chart:C.defaults()},{id:'second',chart:C.defaults('pie')}]};
+assert.equal(C.normalizeCollection(multiple).activeId,'second');
+assert.equal(C.normalizeCollection(multiple).activeByType.pie,'second');
+assert.equal(C.normalizeCollection(multiple).activeByType.bar,'first');
+assert.throws(()=>C.normalizeCollection({...multiple,activeId:'missing'}),/当前图表/);
+assert.throws(()=>C.normalizeCollection({...multiple,charts:[multiple.charts[0],multiple.charts[0]]}),/重复/);
 const table = [['分类', '甲', '乙'], ['A,一', 12, -3], ['B"二', 0, 4]];
 assert.deepEqual(C.parseDelimited(C.toCSV(table)), table.map(r => r.map(String)));
 assert.deepEqual(C.parseDelimited('\uFEFF类别\t数值\r\n甲\t12\r\n'), [['类别', '数值'], ['甲', '12']]);
