@@ -24,6 +24,7 @@
   let flushDraft = null;
 
   const MODULE_ICONS = {
+    'data-charts': '<path d="M2 13h14M4 11V7m5 4V2m5 9V5"/>',
     'relay-fuse': '<path d="M2.5 5h4M11.5 5h4M6.5 5l5 3-5 3m5-3h4"/>',
     conductor: '<circle cx="4" cy="8" r="2"/><circle cx="14" cy="8" r="2"/><path d="M6 8h6"/>',
     precharge: '<path d="M2 8h3l1.2-2 2.4 4L11 6l1.2 2H16"/>',

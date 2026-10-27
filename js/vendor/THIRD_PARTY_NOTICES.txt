@@ -1,5 +1,12 @@
 Third-party browser libraries (bundled for offline use)
 
+0. Apache ECharts 5.6.0
+   Copyright The Apache Software Foundation
+   License: Apache License 2.0; full text in echarts.LICENSE.txt; notices in echarts.NOTICE.txt
+   Source: https://github.com/apache/echarts/tree/5.6.0
+   Distribution: https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js
+   Runtime: echarts.min.js (bundled for offline chart editing and export)
+
 1. JSZip 3.10.1
    Copyright (c) Stuart Knightley, David Duponchel, Franz Buchinger, António Afonso
    License: MIT

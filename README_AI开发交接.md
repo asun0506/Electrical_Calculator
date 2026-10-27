@@ -43,10 +43,11 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 
 ## 3. 全部当前功能模块
 
-以下 19 个模块是当前入口实际注册的导航功能。旧文件仍在目录不代表有独立导航入口。
+以下 20 个模块是当前入口实际注册的导航功能。旧文件仍在目录不代表有独立导航入口。
 
 | ID | 功能 | 首要源码/数据 | 接手重点 |
 | --- | --- | --- | --- |
+| `data-charts` | 数据图表编辑器（21种） | `js/data-charts-core.js`、`js/calc-data-charts.js`、`css/data-charts.css` | 离线 ECharts 5.6.0；数据表格/粘贴、CSV/TSV/XLSX/JSON 导入，CSV/XLSX/工程 JSON/PNG/SVG 导出；schema 1，动态模型草稿，40 步撤销重做；限制 2000 数据行、20 数值列、5 MB 导入；特殊数据格式提示；测试 `tests/data-charts*.cjs` |
 | `relay-fuse` | 电池包等效内阻、最大外短电流、继电器/保险丝保护曲线配合 | `js/calc-relay-fuse.js` | 多电阻段尺寸/定值、数量串并联、组合表达式、曲线和人工校核分析；JSON 与中英文 PDF |
 | `conductor` | 电池包RLC校核（保留原电阻模块ID） | `js/calc-conductor.js`、`js/rlc-core.js` | 电阻网络/限值、直段电感及手动覆盖、RL短路响应、Y/寄生电容与接触路径能量；JSON schema 3兼容旧项目，中英文报告 |
 | `precharge` | 预充电阻、时间常数、峰值电流及现有电阻校核 | `js/calc-precharge.js` | RC 模型、时间/目标比例输入、单位与边界 |

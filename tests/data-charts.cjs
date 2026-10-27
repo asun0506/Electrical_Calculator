@@ -1,0 +1,33 @@
+const assert = require('node:assert/strict');
+const C = require('../js/data-charts-core.js');
+const table = [['分类', '甲', '乙'], ['A,一', 12, -3], ['B"二', 0, 4]];
+assert.deepEqual(C.parseDelimited(C.toCSV(table)), table.map(r => r.map(String)));
+assert.deepEqual(C.parseDelimited('\uFEFF类别\t数值\r\n甲\t12\r\n'), [['类别', '数值'], ['甲', '12']]);
+assert.deepEqual(C.parseDelimited('类别,值\n"多\n行",2'), [['类别', '值'], ['多\n行', '2']]);
+assert.throws(() => C.parseDelimited('a,b\n"bad,2'), /引号/);
+assert.throws(() => C.normalizeTable([['项目','值'],['A','oops']]), /第 2 行/);
+assert.throws(() => C.normalizeTable([['项目','甲','乙'],['A',1]]), /列数/);
+assert.throws(() => C.normalizeTable([['项目','值'],['A',Infinity]]), /有限数值/);
+assert.throws(() => C.normalizeProject({schema: 99}), /版本/);
+assert.throws(() => C.normalizeProject({...C.defaults(), settings: {yMin: 10, yMax: 1}}), /最小值/);
+const unfinished = C.defaults(); unfinished.table[1][1]='未完成'; unfinished.settings.yMin=100;unfinished.settings.yMax=10;
+assert.equal(C.normalizeProject(unfinished,{draft:true}).table[1][1],'未完成');
+for (const type of C.types) {
+  const p = C.defaults(type.id);
+  const restored = C.normalizeProject(JSON.parse(JSON.stringify(p)));
+  const option = C.buildOption(restored);
+  assert.ok(option.series.length, type.id);
+  assert.ok(!JSON.stringify(option).includes('NaN'), type.id);
+}
+const p = C.defaults('stacked-bar'); p.table = table;
+assert.equal(C.buildOption(p).series[1].stack, 'total');
+assert.equal(C.buildOption(C.defaults('area')).series[0].stack, undefined);
+assert.equal(C.buildOption(C.defaults('stacked-area')).series[0].stack, 'total');
+const waterfall = C.defaults('waterfall'); waterfall.table = [['阶段','变化'],['初始',100],['减少',-30],['增加',20]];
+const ws = C.buildOption(waterfall).series;
+assert.deepEqual(ws[0].data, [0,70,70]);
+assert.deepEqual(ws[2].data, ['-',30,'-']);
+assert.throws(() => C.buildOption({...C.defaults('pie'),table:[['项目','值'],['A',-1]]}), /非负/);
+const candle = C.defaults('candlestick'); candle.table[1] = ['日',10,12,11,20];
+assert.throws(() => C.buildOption(candle), /最低/);
+console.log('PASS chart types, CSV quoting, project validation, stacking, signed waterfall and candle bounds');

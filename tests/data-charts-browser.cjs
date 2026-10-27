@@ -1,0 +1,86 @@
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const fs = require('node:fs');
+const {pathToFileURL} = require('node:url');
+const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+(async()=>{
+  const browser=await chromium.launch({executablePath:process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe',headless:true,args:['--allow-file-access-from-files']});
+  const page=await browser.newPage({viewport:{width:1600,height:1100},acceptDownloads:true});
+  const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+  try {
+    await page.goto(pathToFileURL(path.join(__dirname,'..','index.html')).href);
+    await page.evaluate(()=>ElectricalToolkit.open('data-charts'));
+    await page.waitForSelector('.dc-chart svg');
+    assert.equal(await page.locator('.dc-type').count(),21);
+    await page.locator('[data-setting=xName]').evaluate(el=>el.closest('details').open=true);
+    await page.locator('[data-setting=xName]').fill('月份');
+    await page.locator('[data-setting=yName]').fill('温度 / ℃');
+    await page.locator('[data-setting=labels]').evaluate(el=>el.closest('details').open=true);
+    await page.locator('[data-setting=labels]').check();
+    await page.locator('[data-setting=legendPosition]').selectOption('right');
+    const option=await page.evaluate(()=>echarts.getInstanceByDom(document.querySelector('.dc-chart')).getOption());
+    assert.equal(option.xAxis[0].name,'月份');assert.equal(option.yAxis[0].name,'温度 / ℃');
+    assert.equal(option.legend[0].orient,'vertical');assert.equal(option.series[0].label.show,true);
+    const title='测试 <img src=x onerror=alert(1)> & 标题';
+    await page.locator('[data-setting=title]').fill(title);
+    assert.ok((await page.locator('.dc-chart').textContent()).includes(title));
+    assert.equal(await page.locator('.dc-chart img').count(),0);
+    await page.locator('[data-row="1"][data-col="1"]').fill('333');
+    await page.locator('[data-row="0"][data-col="1"]').fill('实测值');
+    let downloadEvent=page.waitForEvent('download');await page.locator('[data-action=json]').click();
+    let download=await downloadEvent;
+    const project=JSON.parse(fs.readFileSync(await download.path(),'utf8'));
+    assert.equal(project.table[1][1],333);assert.equal(project.table[0][1],'实测值');assert.equal(project.settings.title,title);
+    await page.evaluate(()=>ElectricalToolkit.open('precharge'));
+    await page.evaluate(()=>ElectricalToolkit.open('data-charts'));
+    assert.equal(await page.locator('[data-row="1"][data-col="1"]').inputValue(),'333');
+    await page.waitForTimeout(500);await page.reload();await page.waitForSelector('.dc-chart svg');
+    assert.equal(await page.locator('[data-setting=title]').inputValue(),title);
+    await page.locator('.dc-file').setInputFiles({name:'quoted.csv',mimeType:'text/csv',buffer:Buffer.from('\uFEFF项目,数值\r\n"A,一",12\r\nB,18')});
+    await page.waitForFunction(()=>document.querySelector('[data-row="1"][data-col="0"]').value==='A,一');
+    await page.locator('.dc-file').setInputFiles({name:'bad.json',mimeType:'application/json',buffer:Buffer.from('{"schema":99}')});
+    await page.waitForFunction(()=>document.querySelector('.dc-status').textContent.includes('导入失败'));
+    assert.equal(await page.locator('[data-row="1"][data-col="0"]').inputValue(),'A,一');
+    const excel=await page.evaluate(()=>{const wb=XLSX.utils.book_new();XLSX.utils.book_append_sheet(wb,XLSX.utils.aoa_to_sheet([['分类','实验'],['导入 Excel',456]]),'数据');return Array.from(new Uint8Array(XLSX.write(wb,{bookType:'xlsx',type:'array'})));});
+    await page.locator('.dc-file').setInputFiles({name:'data.xlsx',mimeType:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',buffer:Buffer.from(excel)});
+    await page.waitForFunction(()=>document.querySelector('[data-row="1"][data-col="1"]').value==='456');
+    await page.locator('[data-action=undo]').click();
+    assert.equal(await page.locator('[data-row="1"][data-col="0"]').inputValue(),'A,一');
+    await page.locator('[data-action=redo]').click();
+    assert.equal(await page.locator('[data-row="1"][data-col="1"]').inputValue(),'456');
+    await page.locator('.dc-file').setInputFiles({name:'saved.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(project))});
+    await page.waitForFunction(()=>document.querySelector('[data-row="1"][data-col="1"]').value==='333');
+    for(const type of await page.evaluate(()=>DataChartsCore.types.map(t=>t.id))) {
+      await page.locator(`[data-type="${type}"]`).click();await page.locator('[data-action=example]').click();
+      assert.equal(await page.locator('.dc-status').getAttribute('data-error'),'false',type);
+      assert.ok(await page.locator('.dc-chart svg path').count(),type);
+    }
+    await page.locator('[data-setting=title]').fill('测试图表');
+    for(const format of ['csv','xlsx','json','svg','png']) {
+      downloadEvent=page.waitForEvent('download');await page.locator(`[data-action="${format}"]`).click();download=await downloadEvent;
+      const buf=fs.readFileSync(await download.path());assert.ok(buf.length>20,format);assert.ok(download.suggestedFilename().endsWith('.'+format));
+      if(format==='png') {assert.equal(buf.readUInt32BE(16),1920);assert.equal(buf.readUInt32BE(20),1080);}
+      if(format==='svg')assert.match(buf.toString(),/<svg/);
+    }
+    await page.locator('[data-type="grouped-bar"]').click();await page.locator('[data-action=example]').click();
+    await page.locator('[data-row="1"][data-col="1"]').evaluate(el=>{el.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,clipboardData:new DataTransfer()}));});
+    await page.locator('[data-row="1"][data-col="1"]').evaluate(el=>{const dt=new DataTransfer();dt.setData('text/plain','901\t902\n903\t904');el.dispatchEvent(new ClipboardEvent('paste',{bubbles:true,clipboardData:dt}));});
+    assert.equal(await page.locator('[data-row="2"][data-col="2"]').inputValue(),'904');
+    await page.locator('[data-setting=yMin]').evaluate(el=>el.closest('details').open=true);
+    await page.locator('[data-setting=yMin]').fill('1000');await page.locator('[data-setting=yMax]').fill('10');
+    assert.match(await page.locator('.dc-status').textContent(),/最小值/);assert.ok(await page.locator('[data-action=png]').isDisabled());
+    await page.locator('[data-setting=yMin]').fill('');await page.locator('[data-setting=yMax]').fill('');
+    await page.locator('[data-setting=title]').fill('月度数据对比');
+    await page.screenshot({path:path.join(__dirname,'..','tmp','data-charts-desktop.png'),fullPage:true});
+    await page.setViewportSize({width:390,height:844});
+    await page.screenshot({path:path.join(__dirname,'..','tmp','data-charts-mobile.png'),fullPage:true});
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+2),'no horizontal page overflow');
+    await page.locator('[data-row="1"][data-col="1"]').fill('未完成');
+    await page.evaluate(()=>ElectricalToolkit.open('precharge'));
+    await page.evaluate(()=>ElectricalToolkit.open('data-charts'));
+    assert.equal(await page.locator('[data-row="1"][data-col="1"]').inputValue(),'未完成','unfinished data survives draft restore');
+    assert.match(await page.locator('.dc-status').textContent(),/有限数值/);
+    assert.deepEqual(errors,[]);
+    console.log('PASS 21 charts, editing, CSV/Excel/JSON imports, all 5 exports, PNG size, undo/redo, paste, validation, drafts and mobile layout');
+  } finally {await browser.close();}
+})().catch(e=>{console.error(e);process.exitCode=1;});

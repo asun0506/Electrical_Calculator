@@ -1,0 +1,47 @@
+.dc { --dc-blue:#2589ef; display:grid;gap:18px; }
+.dc h3,.dc h4,.dc p {margin:0}
+.dc .dc-panel {background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:20px;min-width:0}
+.dc-topline,.dc-actions,.dc-panel-head {display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.dc-panel-head {justify-content:space-between;margin-bottom:16px}
+.dc-note {color:var(--text-muted);font-size:12px;line-height:1.8}
+.dc-gallery {display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px;margin-top:16px}
+.dc-type {display:flex;align-items:center;gap:10px;padding:15px 12px;border:1px solid var(--border);background:#fff;color:var(--text);border-radius:12px;text-align:left;cursor:pointer;font:inherit;font-size:13px;transition:border-color .15s,background .15s}
+.dc-type svg {width:38px;height:38px;flex-shrink:0}
+.dc-type:hover {border-color:#8dbdf5;background:#f7faff}
+.dc-type[aria-pressed=true] {border-color:var(--primary);background:var(--primary-soft);box-shadow:inset 0 0 0 1px var(--primary)}
+.dc-workspace {display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:18px;align-items:start}
+.dc-preview {overflow:hidden;padding:0!important}
+.dc-preview .dc-panel-head {padding:16px 20px;margin:0;border-bottom:1px solid var(--border)}
+.dc-preview-stage {padding:16px;background:#f1f4f9;overflow:auto;max-height:850px}
+.dc-chart {background:#fff;width:100%;min-height:260px;box-shadow:0 3px 16px #0f172a0a}
+.dc-preview-footer {padding:10px 20px;font-size:12px;color:var(--text-muted)}
+.dc-settings {max-height:850px;overflow:auto}
+.dc-settings details {border-bottom:1px solid var(--border);padding:12px 0}
+.dc-settings details:last-child {border:0}
+.dc-settings summary {font-weight:600;cursor:pointer;font-size:13px}
+.dc-fields {display:grid;gap:10px;padding-top:12px}
+.dc-field {display:grid;gap:5px;font-size:12px;color:var(--text-muted)}
+.dc input:not([type=checkbox]):not([type=color]),.dc select,.dc textarea {width:100%;padding:7px 9px;border:1px solid var(--border);border-radius:6px;font:inherit;background:#fff;color:var(--text);min-width:0}
+.dc input[type=checkbox] {accent-color:var(--primary)}
+.dc-field-row {display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.dc-check {display:flex;align-items:center;gap:8px;font-size:12px}
+.dc-colors {display:flex;flex-wrap:wrap;gap:6px}
+.dc input[type=color] {padding:2px;border:1px solid var(--border);border-radius:6px;width:30px;height:30px;background:white;cursor:pointer}
+.dc-table-wrap {max-height:380px;overflow:auto;border:1px solid var(--border);border-radius:8px;margin-top:12px}
+.dc-table {border-collapse:collapse;width:100%;font-size:12px;margin:0}
+.dc-table th,.dc-table td {padding:0;border:1px solid #e8edf3;min-width:105px;background:white}
+.dc-table th {position:sticky;top:0;z-index:1;background:#f5f8fc}
+.dc-table input {border:0!important;border-radius:0!important;padding:10px!important;background:transparent!important;height:38px}
+.dc-table th:first-child,.dc-table td:first-child {min-width:38px;width:38px;text-align:center;color:var(--text-muted);background:#f5f8fc}
+.dc-table th:last-child,.dc-table td:last-child {min-width:36px;width:36px}
+.dc-remove {border:0;background:transparent;color:#94a3b8;cursor:pointer;padding:6px}
+.dc-remove:hover {color:var(--danger)}
+.dc-cell-head {display:flex;align-items:center}
+.dc-status {padding:10px 14px;border-radius:8px;font-size:13px;background:#eff6ff;color:#2563eb}
+.dc-status:empty {display:none}
+.dc-status[data-error=true] {color:#b91c1c;background:#fef2f2}
+.dc-paste {margin-top:14px}
+.dc-paste textarea {margin:10px 0;min-height:100px;font-family:var(--mono);font-size:12px}
+.dc button:focus-visible,.dc input:focus-visible,.dc select:focus-visible,.dc textarea:focus-visible,.dc summary:focus-visible {outline:2px solid var(--primary);outline-offset:2px}
+@media(max-width:1150px) {.dc-workspace{grid-template-columns:minmax(0,1fr)}.dc-settings{max-height:none}.dc-settings>.dc-fields{grid-template-columns:repeat(2,minmax(0,1fr))}.dc-settings details{padding:12px}.dc-gallery{grid-template-columns:repeat(auto-fill,minmax(140px,1fr))}}
+@media(max-width:600px) {.dc .dc-panel{padding:14px}.dc-settings>.dc-fields{grid-template-columns:1fr}.dc-actions .btn{padding:6px 10px;font-size:12px}.dc-gallery{grid-template-columns:repeat(2,minmax(0,1fr))}.dc-type{padding:12px 8px;font-size:12px}.dc-type svg{width:28px;height:28px}}
