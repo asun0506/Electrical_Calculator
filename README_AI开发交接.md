@@ -100,6 +100,31 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 
 ## 5. 草稿、项目保存和兼容性
 
+### 未发布开发：功能内多项目与工作区备份
+
+2026-10-22 开发分支 `codex/module-projects-backup` 在不改变产品版本的情况下新增独立项目容器，尚未合并/发布的实际状态以 Git 为准。不要继续向旧单例草稿路径写入新业务项目。
+
+- `workspace-core.js`：纯函数 WorkspaceState/ProjectRecord、严格序列化校验、名称/ID/revision、恢复预案；CommonJS 与浏览器共享。
+- `workspace-store.js`：IndexedDB `electrical-toolkit-workspaces` v1、`records` 仓库，一条 `id=workspace` 原子记录；比较 revision 后在同一事务提交工作区与恢复点。localStorage 前缀 `electrical_workspace_v1:`，immutable data/point 键先写与验证、最后切换 head；只能在可用浏览器锁下做独立回退写。旧库不删除。
+- `project-adapters.js`：功能适配登记、旧键白名单和幂等迁移。动态模块 `validateDraft(model)` 暴露无副作用的业务结构校验，不允许“normalize 变成默认值”伪装通过。`mode=query` 的 materials、engineering-formulas、standards-library 不生成业务项目。
+- `project-controller.js`：`initialize/open/flush/newProject/copyProject/renameProject/deleteProject/reset/captureWorkspace/applyRestore/rollback`。`ElectricalToolkit.open(id)` 现在返回 Promise，测试与内部组合调用必须 await；首屏 openInitial 不覆盖先到的用户导航。原始 CalculatorDrafts.readLegacy 与旧 IndexedDB 保留作迁移输入；read(id) 在启用后返回当前项目/查询快照。
+- `project-ui.js`：标题下项目工具栏与命名对话框；业务捕获只扫描 calc-body，不包含项目控件。材料恢复须更新内存缓存，不能只改历史 localStorage 键。
+- `backup-format.js`：目录/ZIP 共用 formatVersion 1、manifest.json、complete.json、资源引用/还原和 SHA-256。反序列化先验证安全边界，再交适配器检查模型。单项目备份是只含一个项目的同格式 ZIP，各模块原生 JSON 不改扩展名或语义。
+- `backup-io.js`：用户授权目录写入、读回、失败/取消清理本次完成标记、ZIP 原始目录扫描、大小/数量限制、顺序有界解压和 CRC。只清理本次新目录里的 complete.json，绝不递归删除用户目录或覆盖历史快照。目录句柄单独存于 `electrical-toolkit-backup-settings`，不导出进备份。
+- `backup-ui.js`：全局基础设施弹窗、备份状态、恢复预览与恢复点。ZIP 下载仅表示生成/发起下载，不能宣称磁盘写入已验证；手工目录授权真实验证与自动化目录替身结果分开记录。
+
+模块异步图片/文件读取须在入口捕获 `ElUtil.editSession()`，写 live state 前验证 `ElUtil.editSessionCurrent(token)`；新项目或重新挂载使旧 token 失效。报告下载用 `ElUtil.projectFilename` 标识当前功能项目，保留模型内的业务项目名、报告名及零件名。来源版本不同的恢复项目标记 requiresReview，不直接把旧通过状态当新结论。
+
+原理图另有 `restoreProjectDraft(model)`：经校验的当前 schema 11 工作快照精确克隆，避免 null/未定义可选字段因重复归一化改变默认绘图指纹。原 `restoreDraft` 和 JSON 导入仍执行既有 normalize 迁移；不能为此更新既有 golden 指纹。
+
+材料页维护 `material-references.js` 独立离线参考目录；不回写共享材料覆盖值。材料草稿 `layoutVersion:2` 使用属性/曲线稳定 ID，`CalculatorDrafts.restore` 在重放前可调用模块可选的 `prepareDraft(payload)`；目前仅材料页用来映射旧匿名索引字段。新增参数时须保持此兼容路径，同名用户材料优先于新内置条目。来源口径、未核验覆盖和验证记录见 [材料参数库审视](docs/materials-reference-audit.md)。
+
+恢复点独立保存，不嵌套进下一恢复点；批量恢复失败不提前更新 UI/cache。回退只改受影响项目/公共键，后续编辑冲突时拒绝覆盖。损坏/冲突的根记录会阻止普通保存；专用 `store.repair(next, true)` 仅在用户明确确认后使用浏览器锁与原始记录比较重建，保留两份原始记录到 `preserved` 和恢复点，不删除旧键。控制器 `applyRestore(..., {repairConfirmed:true})` 从空工作区加已选有效备份重建，不能把初始化失败的临时默认项目当作可靠旧数据。恢复点是浏览器内保护，定期导出的时间快照才是浏览器数据丢失后的备份；权限、配额或磁盘故障不会因此修复。
+
+切换/新建/恢复等待持久化时，目标编辑区保持 inert；`lastSaved` 对应已提交快照，不能取等待结束时的任意 UI 内容。SOR Word/PDF 和 DFMEA Excel 的异步生成绑定发起项目会话；会话切换即取消输出，PDF 延迟打印也必须再次检查，不能给新项目套用旧预览或文件名。恢复前必须校验模型中被渲染使用的字段和公共材料的内部条目；意外渲染失败会尝试按恢复点自动回退，失败信息不得无条件声称原数据未变。
+
+新增 tests/workspace-*.cjs、projects-*.cjs、backup-*.cjs 已进入现有调度；用现有 Windows Chrome 运行时设置 `CHROME_PATH`，无 pnpm worktree 安装时可直接执行 package.json 相同命令 `node scripts/run-tests.cjs all`。验证边界见 [workspace-backup-validation.md](docs/workspace-backup-validation.md)。
+
 每模块草稿包包含 `form`、`model`、`tabs`、`details`。钩子签名：
 
 | 钩子 | 含义 |

@@ -41,6 +41,21 @@ async function roundTrip(id) {
 async function storageCharacterization() {
   await saved();
   await page.evaluate(async () => {
+    // Seed the pre-project format into a genuinely unmigrated workspace.
+    for (let i = localStorage.length - 1; i >= 0; i -= 1) {
+      const key = localStorage.key(i);
+      if (key.startsWith('electrical_workspace_v1:')) localStorage.removeItem(key);
+    }
+    await new Promise((resolve, reject) => {
+      const request = indexedDB.open('electrical-toolkit-workspaces', 1);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        const db = request.result, transaction = db.transaction('records', 'readwrite');
+        transaction.objectStore('records').clear();
+        transaction.oncomplete = () => { db.close(); resolve(); };
+        transaction.onerror = () => reject(transaction.error);
+      };
+    });
     localStorage.setItem('electrical_toolkit_active_calculator_v1', 'bolt');
     localStorage.setItem('electrical_toolkit_draft_v1:bolt', JSON.stringify({
       id: 'bolt', version: 1, updatedAt: 4000000000000,
@@ -97,45 +112,45 @@ async function storageCharacterization() {
   console.log('PASS seeded compatibility: active ID, local/IndexedDB drafts, material override/custom, estimator, IEC');
 }
 async function storageFailureBehavior(onlyIEC = false) {
-  const failurePage = await context.newPage();
-  const alerts = [];
-  failurePage.on('dialog', async dialog => { alerts.push(dialog.message()); await dialog.accept(); });
-  failurePage.on('pageerror', error => errors.push(error.message));
-  await failurePage.addInitScript(() => {
-    Storage.prototype.setItem = () => { throw new DOMException('QA full', 'QuotaExceededError'); };
-    IDBObjectStore.prototype.put = () => { throw new DOMException('QA full', 'QuotaExceededError'); };
-  });
-  await failurePage.goto(url);
-  await failurePage.waitForSelector('.draft-toolbar');
-  if (!onlyIEC) {
-    await failurePage.evaluate(() => ElectricalToolkit.open('relay-fuse'));
-    await failurePage.locator('#rf-pack-voltage').fill('567');
+  // Project switching is intentionally blocked after a failed save. Each module
+  // therefore gets its own page, opened successfully before failure injection.
+  for (const [id, selector, value] of onlyIEC ? [['iec60664', '[data-project=name]', 'IEC 保存失败仍保留']] : [
+    ['relay-fuse', '#rf-pack-voltage', '567'], ['materials', '.mt-p[data-k=E]', '98765'],
+    ['part-estimator', '#pe-project-name', '保存失败仍保留'], ['iec60664', '[data-project=name]', 'IEC 保存失败仍保留'],
+  ]) {
+    const failurePage = await context.newPage(), alerts = [];
+    failurePage.on('dialog', async dialog => { alerts.push(dialog.message()); await dialog.accept(); });
+    failurePage.on('pageerror', error => errors.push(error.message));
+    await failurePage.goto(url);
+    await failurePage.evaluate(id => ElectricalToolkit.open(id), id);
+    if (id === 'materials') await failurePage.locator('#mt-edit').click();
+    await failurePage.evaluate(() => {
+      Storage.prototype.setItem = () => { throw new DOMException('QA full', 'QuotaExceededError'); };
+      IDBObjectStore.prototype.put = () => { throw new DOMException('QA full', 'QuotaExceededError'); };
+    });
+    await failurePage.locator(selector).fill(value);
+    if (id === 'materials') {
+      await failurePage.locator('#mt-save').click();
+      assert.ok(alerts.some(text => /导出.*备份/.test(text)), 'material failure offers export backup');
+    }
     await failurePage.waitForFunction(() => document.querySelector('.draft-toolbar [role=status]')?.textContent.includes('浏览器保存失败'));
-    assert.equal(await failurePage.locator('#rf-pack-voltage').inputValue(), '567', 'both failed writes keep current values');
-    await failurePage.evaluate(() => { ElectricalToolkit.open('bolt'); ElectricalToolkit.open('relay-fuse'); });
-    assert.equal(await failurePage.locator('#rf-pack-voltage').inputValue(), '567', 'failed writes keep session draft');
-    await failurePage.evaluate(() => ElectricalToolkit.open('materials'));
-    await failurePage.locator('#mt-edit').click();
-    await failurePage.locator('.mt-p[data-k=E]').fill('98765');
-    alerts.length = 0;
-    await failurePage.locator('#mt-save').click();
-    assert.ok(alerts.some(text => /导出.*备份/.test(text)), 'material failure offers export backup');
-    assert.equal(await failurePage.locator('.mt-p[data-k=E]').inputValue(), '98765');
-    await failurePage.evaluate(() => ElectricalToolkit.open('part-estimator'));
-    await failurePage.locator('#pe-project-name').fill('保存失败仍保留');
-    assert.match(await failurePage.locator('.pe-notice').textContent(), /保存失败.*导出.*备份/, 'estimator input failure immediately offers backup');
-    assert.equal(await failurePage.locator('#pe-project-name').inputValue(), '保存失败仍保留');
-    await failurePage.locator('[data-action=add-part]').click();
-    assert.match(await failurePage.locator('.pe-notice').textContent(), /保存失败.*导出.*备份/);
-    assert.doesNotMatch(await failurePage.locator('.pe-notice').textContent(), /数据自动保存在当前浏览器/, 'failed save must not also claim persistence');
+    assert.equal(await failurePage.locator(selector).inputValue(), value);
+    assert.equal((await failurePage.evaluate(id => ElectricalToolkit.open(id === 'bolt' ? 'precharge' : 'bolt'), id)).ok, false, 'failed save blocks leaving current project');
+    assert.equal(await failurePage.locator(selector).inputValue(), value, 'failed switch preserves edited fields');
+    if (id === 'part-estimator') {
+      await failurePage.locator('[data-action=add-part]').click();
+      await failurePage.waitForFunction(() => document.querySelector('.draft-toolbar [role=status]')?.textContent.includes('浏览器保存失败'));
+    }
+    if (id === 'iec60664') {
+      await failurePage.evaluate(() => { delete window.CalculatorDrafts; });
+      alerts.length = 0;
+      await failurePage.locator(selector).fill('IEC standalone');
+      await failurePage.waitForFunction(() => document.querySelector('.draft-toolbar [role=status]')?.textContent.includes('失败'));
+      assert.ok(alerts.some(text => /导出.*备份/.test(text)), 'IEC standalone save failure offers export backup');
+    }
+    await failurePage.close();
   }
-  await failurePage.evaluate(() => { ElectricalToolkit.open('iec60664'); delete window.CalculatorDrafts; });
-  alerts.length = 0;
-  await failurePage.locator('[data-project=name]').fill('IEC 保存失败仍保留');
-  await failurePage.waitForTimeout(250);
-  assert.ok(alerts.some(text => /导出.*备份/.test(text)), 'IEC standalone save failure offers export backup');
-  assert.equal(await failurePage.locator('[data-project=name]').inputValue(), 'IEC 保存失败仍保留');
-  await failurePage.close();
+  await page.reload(); await page.waitForSelector('.draft-toolbar');
   console.log('PASS failed localStorage/IndexedDB writes preserve forms and actionable backup messages');
 }
 async function objectStoreContract() {

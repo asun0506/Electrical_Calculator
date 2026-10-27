@@ -230,7 +230,9 @@
     const item = state.conductors.find((row) => row.id === event.target.dataset.rowImage);
     if (!item) return;
     try {
+      const sessionToken = E.editSession();
       const dataUrl = window.ElectricalSafety.validateImageDataUrl(await readFileDataUrl(file));
+      if (!E.editSessionCurrent(sessionToken)) return;
       item.image = { name: file.name, type: file.type, size: file.size, dataUrl };
       render();
     } catch (error) { window.alert(`图片导入失败：${error.message}`); }
@@ -381,6 +383,7 @@
   }
 
   function downloadBlob(blob, fileName) {
+    fileName = E.projectFilename(fileName);
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
@@ -397,6 +400,7 @@
   }
 
   async function importJson(event) {
+    const sessionToken = E.editSession();
     const file = event.target.files && event.target.files[0];
     if (!file) return;
     try {
@@ -424,6 +428,7 @@
         inductanceUh: item.inductanceUh ?? '',
         image: item.image?.dataUrl ? item.image : null,
       }));
+      if (!E.editSessionCurrent(sessionToken)) return;
       state = next;
       render();
     } catch (error) {
@@ -482,6 +487,7 @@
 
   T.register({
     id: 'conductor',
+    validateDraft: saved => saved && [2, 3].includes(saved.schemaVersion) && Array.isArray(saved.conductors) && saved.conductors.length > 0 && saved.conductors.length <= 1000 && saved.conductors.every(row => window.ElectricalSafety.isPlainObject(row) && (!row.image || window.ElectricalSafety.validateImageDataUrl(row.image.dataUrl))),
     captureDraft: () => clone(state),
     restoreDraft(saved) {
       if (!Array.isArray(saved.conductors) || !saved.conductors.length) throw new Error('导体草稿缺少导体段');

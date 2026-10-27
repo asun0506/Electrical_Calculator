@@ -1,0 +1,56 @@
+const assert = require('node:assert/strict');
+const path = require('node:path');
+const { pathToFileURL } = require('node:url');
+const { chromium } = require('playwright');
+(async () => {
+  const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || 'C:/Program Files/Google/Chrome/Application/chrome.exe', headless: true, args: ['--allow-file-access-from-files'] });
+  try {
+    const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+    const errors = []; page.on('pageerror', error => errors.push(error.message));
+    await page.goto(pathToFileURL(path.join(__dirname, '..', 'index.html')).href);
+    await page.waitForSelector('.calc-body');
+    assert.equal((await page.evaluate(() => ElectricalWorkspaceCore.validatePayload(CalculatorDrafts.capture(ElectricalToolkit.active(), document.querySelector('.calc-body'))))).ok, true, 'selects and textareas must not add undefined checkbox fields');
+    await page.evaluate(() => ElectricalToolkit.open('precharge'));
+    assert.equal(await page.locator('[data-project-select]').count(), 1, 'function must expose an independent project selector');
+    await page.locator('.calc-body').click({ position: { x: 2, y: 2 } });
+    await page.waitForFunction(() => document.querySelector('.draft-toolbar [role=status]')?.textContent.startsWith('已保存'));
+    const idA = await page.locator('[data-project-select]').inputValue();
+    await page.locator('#pc-v').fill('711');
+    assert.equal((await page.evaluate(() => ElectricalProjectController.newProject('方案 B'))).ok, true);
+    assert.notEqual(await page.locator('#pc-v').inputValue(), '711', 'new project starts at defaults');
+    const idB = await page.locator('[data-project-select]').inputValue();
+    await page.locator('#pc-v').fill('522');
+    await page.locator('[data-project-select]').selectOption(idA);
+    await page.waitForFunction(() => document.querySelector('#pc-v')?.value === '711');
+    await page.evaluate(() => ElectricalToolkit.open('conductor'));
+    await page.evaluate(() => ElectricalToolkit.open('precharge'));
+    assert.equal(await page.locator('#pc-v').inputValue(), '711');
+    await page.reload(); await page.waitForSelector('[data-project-select]');
+    assert.equal(await page.locator('#pc-v').inputValue(), '711');
+    await page.evaluate(() => ElectricalProjectController.copyProject('方案 A 副本'));
+    assert.equal(await page.locator('#pc-v').inputValue(), '711');
+    await page.evaluate(() => ElectricalProjectController.renameProject('已重命名'));
+    assert.match(await page.locator('[data-project-select] option:checked').textContent(), /已重命名/);
+    const copyId = await page.locator('[data-project-select]').inputValue();
+    await page.evaluate(id => ElectricalProjectController.deleteProject(id), copyId);
+    assert.equal(await page.locator(`[data-project-select] option[value="${copyId}"]`).count(), 0);
+    await page.evaluate(({ a, b }) => Promise.all([ElectricalProjectController.open('precharge', a), ElectricalProjectController.open('precharge', b), ElectricalProjectController.open('precharge', a)]), { a: idA, b: idB });
+    assert.equal(await page.locator('#pc-v').inputValue(), '711', 'rapid queued switches end on the latest request');
+    await page.locator('[data-project-action=new]').click();
+    await page.locator('dialog[open] input[name=projectName]').fill('不应创建');
+    await page.keyboard.press('Escape');
+    assert.equal(await page.locator('dialog[open]').count(), 0);
+    assert.equal(await page.locator('[data-project-action=new]').evaluate(node => node === document.activeElement), true, 'cancel restores keyboard focus');
+    // Force a genuine target-restore failure after the source has been persisted.
+    await page.evaluate(id => { const adapter = ElectricalProjectAdapters.get('precharge'), restore = adapter.restore; adapter.restore = (payload, host) => { if (payload.form.find(x => x.id === 'pc-v')?.value === '522') throw Error('target restore failed'); restore(payload, host); }; }, idB);
+    assert.equal((await page.evaluate(id => ElectricalProjectController.open('precharge', id), idB)).ok, false);
+    assert.equal(await page.locator('#pc-v').inputValue(), '711', 'failed target restoration preserves source editor');
+    await page.locator('#pc-v').fill('712');
+    await page.evaluate(() => { Storage.prototype.setItem = () => { throw Error('quota'); }; IDBObjectStore.prototype.put = () => { throw Error('quota'); }; });
+    assert.equal((await page.evaluate(() => ElectricalToolkit.open('conductor'))).ok, false);
+    assert.equal(await page.locator('#pc-v').inputValue(), '712', 'failed save blocks project and module switch');
+    assert.match(await page.locator('.draft-toolbar [role=status]').textContent(), /失败/);
+    assert.deepEqual(errors, []);
+    console.log('PASS projects: defaults, save/switch/reload, copy/rename/delete, rapid switches, keyboard cancel and failed save/restore');
+  } finally { await browser.close(); }
+})().catch(error => { console.error(error); process.exitCode = 1; });

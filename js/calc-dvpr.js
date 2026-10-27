@@ -29,7 +29,7 @@
     return {...base,...saved,view:saved.view==='guide'?'guide':'plan',guideProduct:product(saved.guideProduct)?saved.guideProduct:'',meta:{...base.meta,...(saved.meta||{})},selectedProducts:(saved.selectedProducts||[]).filter(id=>product(id)),selectedStandards:(saved.selectedStandards||[]).filter(id=>LIB.standards[id]),rows:(saved.rows||[]).map(normalizeRow)};
   }
   function formatBytes(n){ if(n<1024)return `${n} B`; if(n<1048576)return `${(n/1024).toFixed(1)} KB`; return `${(n/1048576).toFixed(1)} MB`; }
-  function download(blob,name){ const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000); }
+  function download(blob,name){ name=E.projectFilename(name);const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000); }
   function fileSafe(v){ return window.ElectricalSafety.safeFilename(v||'DVP&R'); }
 
   function render(host){
@@ -171,7 +171,7 @@
   }
   async function onFileChange(event){
     if(!event.target.matches('[data-attach]'))return;const row=findRow(event.target);if(!row)return;
-    const files=[...event.target.files];for(const file of files){try{if(file.size>12*1024*1024)throw new Error('附件超过 12 MB');if(file.type.startsWith('image/')&&file.size>6*1024*1024)throw new Error('图片不能超过 6 MB');const dataUrl=await readDataUrl(file);if(dataUrl.startsWith('data:image/'))window.ElectricalSafety.validateImageDataUrl(dataUrl);row.attachments.push({name:file.name,type:file.type||'application/octet-stream',size:file.size,dataUrl});}catch(error){alert(`${file.name} 导入失败：${error.message}`);}}renderRows();
+    const token=E.editSession();const files=[...event.target.files];for(const file of files){try{if(file.size>12*1024*1024)throw new Error('附件超过 12 MB');if(file.type.startsWith('image/')&&file.size>6*1024*1024)throw new Error('图片不能超过 6 MB');const dataUrl=await readDataUrl(file);if(!E.editSessionCurrent(token))return;if(dataUrl.startsWith('data:image/'))window.ElectricalSafety.validateImageDataUrl(dataUrl);row.attachments.push({name:file.name,type:file.type||'application/octet-stream',size:file.size,dataUrl});}catch(error){alert(`${file.name} 导入失败：${error.message}`);}}renderRows();
   }
   function readDataUrl(file){return new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=reject;reader.readAsDataURL(file);});}
   function onPaste(event){
@@ -182,7 +182,7 @@
   }
   function exportJson(){consolidateRows();download(new Blob([JSON.stringify({...state,exportedAt:new Date().toISOString()},null,2)],{type:'application/json'}),`${fileSafe(state.meta.projectName)}_DVPR.json`);}
   async function importJson(event){
-    const file=event.target.files[0];if(!file)return;try{if(file.size>10*1024*1024)throw new Error('JSON 大小不能超过 10 MB');const parsed=window.ElectricalSafety.parseJson(await file.text(),{maxArrayLength:5000,validate:validImport});state=normalize(parsed);render(hostRef);alert(`已导入 ${state.rows.length} 条验证项目，附件已一并恢复。`);}catch(error){alert(`JSON导入失败：${error.message}`);}event.target.value='';
+    const token=E.editSession();const file=event.target.files[0];if(!file)return;try{if(file.size>10*1024*1024)throw new Error('JSON 大小不能超过 10 MB');const text=await file.text();if(!E.editSessionCurrent(token))return;const parsed=window.ElectricalSafety.parseJson(text,{maxArrayLength:5000,validate:validImport});state=normalize(parsed);render(hostRef);alert(`已导入 ${state.rows.length} 条验证项目，附件已一并恢复。`);}catch(error){alert(`JSON导入失败：${error.message}`);}event.target.value='';
   }
   function validImport(data){
     const S=window.ElectricalSafety,scalar=v=>v==null||['string','number','boolean'].includes(typeof v);
@@ -206,7 +206,7 @@
     ws['!freeze']={xSplit:2,ySplit:5};ws['!autofilter']={ref:`A5:P${5+state.rows.length}`};ws['!merges']=[XLSX.utils.decode_range('A1:P1')];
     XLSX.utils.book_append_sheet(wb,ws,'DVP&R');
     const map=XLSX.utils.aoa_to_sheet([['标准体系映射（仅表示验证主题相近，不代表等效或互认）'],['标准体系','相近范围','等效性','差异提示'],...LIB.mappings.map(m=>[m.systems.join(' ↔ '),m.scope,'不等效',m.note])]);map['!cols']=[{wch:42},{wch:38},{wch:12},{wch:80}];map['!merges']=[XLSX.utils.decode_range('A1:D1')];XLSX.utils.book_append_sheet(wb,map,'标准映射提示');
-    XLSX.writeFile(wb,`${fileSafe(state.meta.projectName)}_DVPR.xlsx`);
+    XLSX.writeFile(wb,E.projectFilename(`${fileSafe(state.meta.projectName)}_DVPR.xlsx`));
   }
   function reportHtml(){
     const m=state.meta;return `<article class="dv-report"><header><h1>DVP&amp;R 设计验证计划与报告</h1><p>${esc(m.projectName)} · ${esc(m.partName)} · ${esc(m.partNo)}</p></header><table class="dv-report-meta"><tr><th>阶段</th><td>${esc(m.phase)}</td><th>版本</th><td>${esc(m.revision)}</td><th>编制人/日期</th><td>${esc(m.preparedBy)} / ${esc(m.preparedDate)}</td></tr></table><p class="dv-report-note"><b>注意：</b>相近标准不代表等效互认；试验条件、样品数量与判据须按项目受控版本复核。</p><table class="dv-report-table"><thead><tr><th>序号/产品</th>${COLUMNS.map(([,label])=>`<th>${label}</th>`).join('')}</tr></thead><tbody>${state.rows.map((r,i)=>`<tr><td>${i+1}<br>${esc(r.productName||product(r.productId)?.name||'')}</td>${COLUMNS.map(([key])=>`<td>${key==='reportNo'?`${esc(r.reportNo)}${(r.attachments||[]).length?`<br>附件：${r.attachments.map(f=>esc(f.name)).join('；')}`:''}`:esc(r[key])}</td>`).join('')}</tr>`).join('')}</tbody></table><h2>标准映射说明</h2>${LIB.mappings.map(m=>`<p><b>${m.systems.map(esc).join(' ↔ ')}：</b>${esc(m.note)}</p>`).join('')}</article>`;
@@ -223,5 +223,5 @@
   `;}
 
   T.register({id:'dvpr',title:'DVP&R生成器',icon:'🧪',group:'工程文档与评审',desc:'按产品与目标标准生成可编辑验证矩阵，支持附件、JSON续编以及Excel/PDF报告。',render,
-    captureDraft:()=>clone(state),restoreDraft(saved){state=normalize(saved);render(hostRef);},resetDraft(){state=freshState();render(hostRef);}});
+    validateDraft:validImport,captureDraft:()=>clone(state),restoreDraft(saved){state=normalize(saved);render(hostRef);},resetDraft(){state=freshState();render(hostRef);}});
 })();

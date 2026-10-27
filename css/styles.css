@@ -1048,3 +1048,46 @@ body { background: var(--bg); line-height: 1.55; }
   body.iec-printing .iec-print-root { display: block !important; }
   body.iec-printing { background: #fff; }
 }
+/* Independent module projects; management controls are excluded from reports. */
+.project-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:12px 16px}
+.project-selector{display:flex;gap:8px;align-items:center;min-width:0;font-weight:600}
+.project-selector select{min-width:190px;max-width:380px}
+.project-actions{display:flex;gap:6px;flex-wrap:wrap}
+.project-toolbar button{padding:7px 10px;cursor:pointer}
+.project-toolbar [role=status]{flex:1 1 240px;font-size:12px;color:var(--text-muted)}
+.workspace-dialog{width:min(720px,calc(100vw - 32px));max-height:85vh;overflow:auto;border:1px solid #bccbd8;border-radius:8px;padding:24px;color:#173b5e;background:#fff}
+.workspace-dialog::backdrop{background:rgba(13,29,45,.45)}
+.workspace-dialog label{display:grid;gap:8px;margin:14px 0}
+.workspace-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin:20px 0 0}
+.workspace-backup-entry{width:100%;padding:9px 12px;margin-bottom:10px;border:1px solid #7894aa;background:transparent;color:inherit;cursor:pointer}
+.backup-dialog h2{margin:0 0 12px;font-size:22px}.backup-dialog h3{margin:20px 0 8px}
+.backup-dialog p{line-height:1.6}.backup-dialog [data-backup-state]{padding:12px;border-left:3px solid #a77624;background:#f3f6f8;overflow-wrap:anywhere}
+.backup-actions{display:flex;gap:10px;flex-wrap:wrap}.backup-actions button,.backup-file-label{padding:8px 12px;border:1px solid #aabcca;background:#fff;border-radius:3px;cursor:pointer;font-size:13px;color:#173b5e}
+.backup-actions .btn-primary{color:#fff;background:#173b5e}.backup-actions .backup-file-label{margin:0;display:inline-flex;align-items:center}
+.backup-file-label input{max-width:190px;margin-left:8px}.backup-footnote{font-size:12px;color:#637689;border-top:1px solid #d5dfe7;padding-top:12px}
+.restore-project-list{border:1px solid #cbd7e1;max-height:260px;overflow:auto;margin:10px 0}.restore-project-row{padding:8px 12px;border-bottom:1px solid #e1e7ed}.restore-project-row:last-child{border-bottom:0}
+.restore-project-row label:first-child,.restore-check,.restore-warnings label{display:flex;align-items:flex-start;gap:8px}.restore-project-row input,.restore-check input,.restore-warnings input{width:auto;flex-shrink:0;margin-top:4px}.restore-project-row [hidden]{display:none}
+.restore-warnings{padding:10px;background:#fff6e3;border-left:3px solid #a77624}.recovery-point-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;border-top:1px solid #d6dfe7;padding:9px 0;font-size:12px}.recovery-point-row span{flex:1 1 150px}
+@media(max-width:700px){.project-selector{width:100%}.project-selector select{flex:1;min-width:0}.workspace-dialog{padding:16px}}
+@media print{.project-toolbar,.workspace-dialog,.workspace-backup-entry{display:none!important}}
+
+/* Material inputs remain primary; source ranges are readable, secondary guidance. */
+.mt-reference{display:grid;gap:5px;margin-top:6px;font-size:11.5px;line-height:1.55;color:var(--text-muted);overflow-wrap:anywhere;min-width:0}
+.mt-reference a{color:var(--primary,#175579);text-decoration:underline;text-underline-offset:2px}
+#mt-detail .field{min-width:0;align-self:start}
+#mt-detail>.note{margin-bottom:14px}
+@media print{.mt-reference{font-size:9px;line-height:1.4}}
+
+.project-manager h2{margin:0 0 12px;font-size:21px}
+.project-manager>p{font-size:13px;line-height:1.6}
+.project-manager-list{border:1px solid #cad6e1;max-height:50vh;overflow:auto}
+.project-manager-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px;border-bottom:1px solid #dbe3eb}
+.project-manager-row:last-child{border-bottom:0}
+.project-manager-row>div:first-child{min-width:0;overflow-wrap:anywhere}
+.project-manager-row small{display:block;margin-top:5px;font-size:11px;color:var(--text-muted)}
+.project-manager-actions{display:flex;gap:6px;flex-wrap:wrap;flex-shrink:0}
+.project-manager-actions button{padding:6px 9px;cursor:pointer;border:1px solid #aabcca;border-radius:3px;background:#fff;color:#173b5e}
+.project-manager-actions .project-delete{color:#a82121;border-color:#dca3a3}
+.project-manager-actions button:disabled{opacity:.45;cursor:not-allowed}
+.project-current-badge{display:inline-block;margin-left:8px;padding:2px 6px;font-size:11px;background:#e8f0f6;border-radius:3px}
+@media(max-width:600px){.project-manager-row{align-items:flex-start;flex-direction:column}.project-manager-actions{width:100%}}

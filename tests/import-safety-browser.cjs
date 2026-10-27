@@ -26,8 +26,8 @@ async function importFile(page, selector, text) {
       page.on('pageerror', error => errors.push(error.message));
       try {
         await page.goto(pathToFileURL(path.resolve(__dirname, '../index.html')).href);
-        await page.evaluate(id => {
-          ElectricalToolkit.open(id);
+        await page.evaluate(async id => {
+          await ElectricalToolkit.open(id);
           window.alert = text => window.__messages.push(String(text)); window.confirm = () => true;
           const read = FileReader.prototype.readAsText;
           FileReader.prototype.readAsText = function (...args) { this.addEventListener('loadend', () => { window.__fileReadDone = true; }); return read.apply(this, args); };

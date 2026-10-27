@@ -18,6 +18,7 @@
 
   T.register({
     id: 'part-estimator',
+    validateDraft: saved => saved && validProject(saved.project) && typeof saved.activeId === 'string',
     captureDraft: () => ({ project: deepClone(project), activeId }),
     restoreDraft(saved) { project = normalizeProject(saved.project); activeId = saved.activeId || project.parts[0].id; renderAll(); },
     resetDraft() { project = newProject(); activeId = project.parts[0].id; saveProject(); renderAll(); },
@@ -104,6 +105,7 @@
   }
 
   function saveProject() {
+    if (window.ElectricalProjectController?.enabled) { saveFailed = false; return true; }
     const result = window.ElectricalStorage.writeJson(STORAGE_KEY, project);
     saveFailed = !result.ok;
     if (!result.ok) {
@@ -502,6 +504,7 @@
   }
 
   function download(content, filename, type) {
+    filename = E.projectFilename(filename);
     const blob = new Blob([content], { type: type || 'application/octet-stream' });
     const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; document.body.appendChild(anchor); anchor.click(); anchor.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
@@ -509,18 +512,22 @@
   function exportJson(value, name) { download(JSON.stringify({ ...value, exportedAt: new Date().toISOString() }, null, 2), `${safeFileName(name)}.json`, 'application/json;charset=utf-8'); }
 
   async function importProjectFile(file, input) {
+    const sessionToken = E.editSession();
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text()); if (!validProject(parsed)) throw new Error('invalid');
+      if (!E.editSessionCurrent(sessionToken)) return;
       if (!confirm(`导入整个项目将替换当前全部${project.parts.length}个零件，是否继续？`)) return;
       project = normalizeProject(parsed); activeId = project.parts[0].id; notice = `已导入整个项目，共${project.parts.length}个零件`; saveProject(); renderAll();
     } catch (error) { alert('项目导入失败：请选择本工具导出的项目JSON文件。'); }
     finally { input.value = ''; }
   }
   async function importPartFile(file, input) {
+    const sessionToken = E.editSession();
     if (!file) return;
     try {
       const parsed = JSON.parse(await file.text()); if (!validProject(parsed)) throw new Error('invalid');
+      if (!E.editSessionCurrent(sessionToken)) return;
       const imported = normalizeProject(parsed).parts[0]; if (!imported.basics || !Array.isArray(imported.materials) || !Array.isArray(imported.processes) || !Array.isArray(imported.packaging)) throw new Error('invalid');
       const current = activePart(); if (!confirm(`导入将替换当前零件“${current.basics.partName}”，不会影响项目中的其他零件，是否继续？`)) return;
       const replacement = deepClone(imported); replacement.id = current.id; replacement.createdAt = current.createdAt; replacement.updatedAt = new Date().toISOString(); ['materials', 'processes', 'packaging'].forEach((kind) => replacement[kind].forEach((line) => { line.rowId = uid(); }));
@@ -553,6 +560,6 @@
     parts.forEach((part) => { const t = totals(part); summary.push([part.basics.partNo, part.basics.partName, t.material, t.process, t.packaging, t.transport, t.subtotal, part.basics.marginRate / 100, t.price]); });
     const summarySheet = XLSX.utils.aoa_to_sheet(summary); summarySheet['!cols'] = [{wch:18},{wch:24},{wch:14},{wch:14},{wch:14},{wch:14},{wch:14},{wch:16},{wch:14}]; XLSX.utils.book_append_sheet(wb, summarySheet, r('项目汇总')); used.add(r('项目汇总'));
     parts.forEach((part, index) => { const sheet = XLSX.utils.aoa_to_sheet(partRows(part, lang)); sheet['!cols'] = Array.from({length:12}, (_, i) => ({wch: i < 3 ? 22 : 15})); XLSX.utils.book_append_sheet(wb, sheet, safeSheetName(`${part.basics.partNo}-${part.basics.partName}`, index, used)); });
-    XLSX.writeFile(wb, `${safeFileName(name)}${lang === 'en' ? '_EN' : ''}.xlsx`);
+    XLSX.writeFile(wb, E.projectFilename(`${safeFileName(name)}${lang === 'en' ? '_EN' : ''}.xlsx`));
   }
 })();

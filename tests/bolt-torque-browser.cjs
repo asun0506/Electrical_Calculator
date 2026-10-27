@@ -43,7 +43,7 @@ let browser;
   await f('innerDiameter').fill('6');
   const state=await page.evaluate(()=>ElectricalToolkit.get('bolt').captureDraft());
   assert.equal(state.schemaVersion,3);assert.equal(state.parts[0].joints[0].frictionArm,'1');
-  await page.evaluate(s=>{ElectricalToolkit.open('precharge');ElectricalToolkit.open('bolt');ElectricalToolkit.get('bolt').restoreDraft(s);},state);
+  await page.evaluate(async s=>{await ElectricalToolkit.open('precharge');await ElectricalToolkit.open('bolt');ElectricalToolkit.get('bolt').restoreDraft(s);},state);
   assert.equal(await f('frictionArm').inputValue(),'1');
   await page.waitForFunction(()=>document.querySelector('.draft-toolbar [role="status"]')?.textContent.startsWith('已保存'));
   await page.reload();await page.waitForSelector('[data-joint-field="frictionArm"]');

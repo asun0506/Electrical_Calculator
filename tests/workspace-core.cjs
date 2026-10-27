@@ -1,0 +1,33 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const file = path.join(__dirname, '../js/workspace-core.js');
+assert.ok(fs.existsSync(file), 'workspace core must implement isolated named projects');
+const C = require(file);
+const payload = () => ({ form: [{ id: 'voltage', index: 0, value: '400' }], model: { rows: [1] }, tabs: [], details: [] });
+let state = C.createWorkspace();
+function add(id, moduleId = 'bolt', name = '安装校核') {
+  const result = C.createProject(state, { moduleId, name, payload: payload(), appVersion: '2.1.1', adapterVersion: 1 }, { id, now: '2026-10-22T00:00:00.000Z' });
+  if (result.ok) state = result.value;
+  return result;
+}
+assert.equal(add('p1').ok, true);
+assert.equal(add('p2').ok, true, 'duplicate names use stable distinct IDs');
+assert.equal(add('p3', 'conductor', ' ').ok, false);
+assert.equal(add('p3', 'conductor', 'x'.repeat(121)).ok, false);
+assert.equal(add('p3', 'conductor', 'x'.repeat(120)).ok, true);
+assert.equal(C.createProject(state, { moduleId: 'bolt', name: 'another', payload: payload() }, { id: 'p1', now: new Date().toISOString() }).ok, false);
+assert.equal(state.projects.length, 3);
+const input = payload();
+let result = C.updateProject(state, 'p1', input, 1, '2026-10-22T01:00:00.000Z');
+assert.equal(result.ok, true); input.model.rows.push(99);
+assert.deepEqual(result.value.projects[0].payload.model.rows, [1]);
+assert.equal(state.projects[0].revision, 1, 'pure operation leaves original state intact');
+state = result.value;
+assert.equal(C.updateProject(state, 'p1', payload(), 1, new Date().toISOString()).error.code, 'conflict');
+assert.equal(C.removeProject(state, 'p3').ok, false, 'cannot remove last project in a module');
+assert.equal(C.removeProject(state, 'p2').value.projects.length, 2);
+assert.equal(C.renameProject(state, 'p1', '重新命名', new Date().toISOString()).value.projects[0].name, '重新命名');
+assert.equal(C.validateWorkspace(JSON.parse('{"schemaVersion":1,"__proto__":{}}')).ok, false);
+assert.equal(C.validateWorkspace({ ...state, projects: [state.projects[0], state.projects[0]] }).ok, false);
+console.log('PASS workspace core: names, identity, isolation, revisions, deletion and validation');

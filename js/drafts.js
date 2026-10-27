@@ -4,6 +4,7 @@
   const PREFIX = 'electrical_toolkit_draft_v1:';
   const storage = window.ElectricalStorage;
   const cache = new Map();
+  const preserved = [];
   const validRecord = record => record && typeof record.id === 'string' && record.version === 1 && record.payload;
   function newer(record) {
     if (validRecord(record)
@@ -12,10 +13,17 @@
   storage.keys(PREFIX).value.forEach(key => {
     const result = storage.readJson(key, { validate: validRecord });
     if (result.ok) newer(result.value);
+    else {
+      const raw = storage.readText(key);
+      if (raw.ok && raw.value !== null) preserved.push({ moduleId: key.slice(PREFIX.length), source: key, value: raw.value, reason: result.error.message });
+    }
   });
   const store = storage.openObjectStore({ database: 'electrical-toolkit-drafts', version: 1, store: 'drafts', keyPath: 'id' });
   const ready = store.getAll().then(result => {
-    if (result.ok) result.value.forEach(newer);
+    if (result.ok) result.value.forEach(record => {
+      if (validRecord(record)) newer(record);
+      else preserved.push({ moduleId: record?.id || '', source: 'indexedDB:drafts', value: JSON.stringify(record), reason: '旧草稿记录结构无效' });
+    });
   });
 
   function write(id, payload) {
@@ -29,7 +37,7 @@
 
   const controls = (host) => Array.from(host.querySelectorAll('input:not([type=file]):not([type=password]),select,textarea'));
   function captureForm(host) {
-    return controls(host).map((control, index) => ({ id: control.id, index, value: control.value, checked: control.checked }));
+    return controls(host).map((control, index) => ({ id: control.id, index, value: control.value, ...(typeof control.checked === 'boolean' ? { checked: control.checked } : {}) }));
   }
   function applyForm(host, values, notifySelects = false) {
     const existing = controls(host);
@@ -48,8 +56,10 @@
       details: Array.from(host.querySelectorAll('details')).map((node, index) => ({ id: node.id, index, open: node.open })),
     };
   }
-  function restore(calc, host, saved) {
-    if (calc.restoreDraft && saved.model != null) calc.restoreDraft(saved.model, host);
+  function restore(calc, host, saved, projectSnapshot = false) {
+    if (calc.prepareDraft) saved = calc.prepareDraft(saved);
+    if (projectSnapshot && calc.restoreProjectDraft && saved.model != null) calc.restoreProjectDraft(saved.model, host);
+    else if (calc.restoreDraft && saved.model != null) calc.restoreDraft(saved.model, host);
     else applyForm(host, saved.form, true);
     // Replay only known UI switches, never arbitrary saved selectors or commands.
     (saved.tabs || []).forEach((tab) => {
@@ -65,6 +75,8 @@
     if (calc.refreshDraft) calc.refreshDraft(host);
   }
 
-  window.CalculatorDrafts = { ready, write, capture, restore, captureForm, applyForm,
-    read: (id) => cache.has(id) ? JSON.parse(JSON.stringify(cache.get(id).payload)) : null };
+  const readLegacy = id => cache.has(id) ? JSON.parse(JSON.stringify(cache.get(id).payload)) : null;
+  window.CalculatorDrafts = { ready, write, capture, restore, captureForm, applyForm, readLegacy,
+    preserved: () => JSON.parse(JSON.stringify(preserved)),
+    read: id => window.ElectricalProjectController?.enabled ? window.ElectricalProjectController.readDraft(id) : readLegacy(id) };
 })();

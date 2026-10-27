@@ -110,7 +110,35 @@
           });
         } catch (cause) { return { ok: false, error: errorFor(cause) }; }
       }
-      return { ready, getAll: () => transact('getAll'), put: value => transact('put', value), remove: key => transact('delete', key) };
+      async function compareAndPut(value, expectedRevision, extras = [], expectedRaw) {
+        const opened = await ready;
+        if (!opened.ok) return opened;
+        try {
+          if (!db) throw new Error('Database connection is unavailable');
+          return await new Promise(resolve => {
+            const transaction = db.transaction(store, 'readwrite');
+            const objectStore = transaction.objectStore(store);
+            let conflict = null;
+            const request = objectStore.get(value.id);
+            request.onsuccess = () => {
+              try {
+              if ((request.result?.revision || 0) !== expectedRevision || expectedRaw !== undefined && JSON.stringify(request.result || null) !== expectedRaw) {
+                conflict = { ok: false, error: { code: 'conflict', message: '工作区已被其他页面修改，请刷新或另存副本' } };
+                transaction.abort(); return;
+              }
+              extras.forEach(item => objectStore.put(item));
+              objectStore.put(value);
+              } catch (cause) {
+                conflict = { ok: false, error: errorFor(cause) };
+                transaction.abort();
+              }
+            };
+            transaction.oncomplete = () => resolve(success());
+            transaction.onerror = transaction.onabort = () => resolve(conflict || { ok: false, error: errorFor(transaction.error || request.error) });
+          });
+        } catch (cause) { return { ok: false, error: errorFor(cause) }; }
+      }
+      return { ready, getAll: () => transact('getAll'), put: value => transact('put', value), remove: key => transact('delete', key), compareAndPut };
     }
     return { readJson, writeJson, remove, readWithLegacy, openObjectStore, readText, writeText, keys };
   }

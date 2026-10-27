@@ -5,6 +5,13 @@ const { spawnSync } = require('node:child_process');
 const groups = Object.freeze({
   browser: [
     'tests/data-charts-browser.cjs',
+    'tests/projects-manage-browser.cjs',
+    'tests/materials-browser.cjs',
+    'tests/workspace-review-browser.cjs',
+    'tests/projects-browser.cjs',
+    'tests/projects-all-modules.cjs',
+    'tests/backup-browser.cjs',
+    'tests/backup-recovery-browser.cjs',
     'tests/math-browser.cjs',
     'tests/bolt-torque-browser.cjs',
     'tests/busbar-chart-browser.cjs',
@@ -29,6 +36,13 @@ const groups = Object.freeze({
   ],
   unit: [
     'tests/data-charts.cjs',
+    'tests/workspace-core.cjs',
+    'tests/workspace-store.cjs',
+    'tests/workspace-migration.cjs',
+    'tests/backup-format.cjs',
+    'tests/backup-io.cjs',
+    'tests/backup-zip.cjs',
+    'tests/workspace-recovery.cjs',
     'tests/math-render.cjs',
     'tests/bolt-torque-core.cjs',
     'tests/safety.cjs',

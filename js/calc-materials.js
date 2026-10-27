@@ -13,6 +13,7 @@
   'use strict';
   const T = window.ElectricalToolkit;
   const E = window.ElUtil;
+  const R = window.MaterialReferences;
   const CATS = ['金属', '塑料', '复合材料'];
   const LS_OVERRIDE = 'matdb_override'; // { name: {key:value} }
   const LS_CUSTOM = 'matdb_custom';     // { name: {完整材料} }
@@ -44,8 +45,8 @@
     if (!result.ok) alert('浏览器本地存储失败。请检查隐私模式或存储空间，并先导出数据备份。');
     return result.ok;
   }
-  const overrides = load(LS_OVERRIDE);
-  const customs = load(LS_CUSTOM);
+  let overrides = load(LS_OVERRIDE);
+  let customs = load(LS_CUSTOM);
   let editing = false; // 是否处于"可修改参数"状态
 
   /** 获取完整材料列表（默认 + 自定义） */
@@ -58,7 +59,7 @@
 
   /** 取得某材料"生效值"（base + 自定义 + 用户覆盖） */
   function effective(name) {
-    const base = window.MATERIAL_DB[name] || customs[name] || {};
+    const base = customs[name] || window.MATERIAL_DB[name] || {};
     const ov = overrides[name] || {};
     const mat = {};
     Object.keys(base).forEach((k) => { mat[k] = base[k]; });
@@ -71,9 +72,40 @@
 
   T.register({
     id: 'materials',
+    captureShared: () => JSON.parse(JSON.stringify({ overrides, customs })),
+    validateShared(value) {
+      const plain = window.ElectricalSafety.isPlainObject;
+      const material = item => plain(item) && Object.entries(item).every(([key, field]) => key === 'curve'
+        ? Array.isArray(field) && field.length <= 10000 && field.every(point => Array.isArray(point) && point.length === 2 && point.every(Number.isFinite))
+        : field == null || typeof field === 'string' || typeof field === 'number' && Number.isFinite(field));
+      const valid = plain(value) && plain(value.overrides) && plain(value.customs) && Object.values(value.overrides).every(material)
+        && Object.values(value.customs).every(item => material(item) && CATS.includes(item.category) && typeof item.name === 'string');
+      return valid ? { ok: true, value: JSON.parse(JSON.stringify(value)) } : { ok: false, error: { code: 'invalid', message: '用户材料库格式无效' } };
+    },
+    restoreShared(value) {
+      const checked = this.validateShared(value);
+      if (!checked.ok) throw new Error(checked.error.message);
+      overrides = checked.value.overrides; customs = checked.value.customs;
+    },
     resetLabel: '恢复默认查询（不删除材料库）',
+    prepareDraft(saved) {
+      if (!saved?.model || saved.model.layoutVersion === 2) return saved;
+      const next = JSON.parse(JSON.stringify(saved)), model = next.model;
+      if (!Array.isArray(model.rows) || model.rows.length !== 2 || !model.rows.every(n => Number.isInteger(n) && n >= 0 && n <= 10000)) throw new Error('材料草稿曲线行数无效');
+      const ids = [], curveIds = (prefix, count) => { for (let i = 0; i < count; i++) ids.push(`${prefix}-curve-${i}-e`, `${prefix}-curve-${i}-s`); };
+      // Old captureForm also included a cancelled (display:none) new-material form.
+      if (model.newOpen || next.form?.some(item => item.id === 'mtn-name')) { ids.push(...PARAMS.map(p => 'mtn-p-' + p.k)); curveIds('mtn', model.rows[1]); }
+      const mat = effective(model.name);
+      PARAMS.filter(p => mat[p.k] !== undefined && !(model.name === 'PBT+GF30' && !isCustom(model.name) && ['Rm', 'elong'].includes(p.k) && !Object.hasOwn(overrides[model.name] || {}, p.k)))
+        .forEach(p => ids.push('mt-p-' + p.k));
+      curveIds('mt', model.rows[0]);
+      let index = 0;
+      next.form = (next.form || []).map(item => item.id ? item : { ...item, id: ids[index++] || 'mt-legacy-unmatched' });
+      model.layoutVersion = 2;
+      return next;
+    },
     captureDraft(host) {
-      return { category: host.querySelector('#mt-cat').value, name: currentName(), editing,
+      return { layoutVersion: 2, category: host.querySelector('#mt-cat').value, name: currentName(), editing,
         newOpen: host.querySelector('#mt-new-form').style.display !== 'none',
         rows: ['mt', 'mtn'].map((prefix) => host.querySelectorAll(`#${prefix}-table-body tr:has(input)`).length) };
     },
@@ -161,6 +193,31 @@
 
   function currentName() { return document.getElementById('mt-name').value; }
 
+  function propertyLabel(name, p, lang = 'zh') {
+    if (!isCustom(name) && p.k === 'Rm' && R.defaultSource(name, p.k)?.values.Rm.quantity === 'break-stress') return lang === 'en' ? 'Stress at Break (legacy Rm field)' : '拉伸断裂应力 σb（Rm字段）';
+    return T.reportLanguage(lang)(p.label);
+  }
+
+  function referenceHtml(name, p, lang = 'zh') {
+    const en = lang === 'en', esc = E.escapeHtml, info = R.lookup(name, p.k);
+    const num = value => Math.abs(value) >= 1e6 || value !== 0 && Math.abs(value) < 0.001 ? Number(value.toPrecision(4)).toExponential() : Number(value.toPrecision(4)).toString();
+    const unit = quantity => quantity === 'standard-specific-gravity' ? (en ? '(relative, dimensionless; not measured density)' : '（相对值，无量纲；非密度实测）') : p.unit;
+    const range = info.groups.length ? info.groups.map(group => {
+      const values = group.bound + num(group.min) + (group.max !== group.min ? ' – ' + num(group.max) : '');
+      const coverage = group.count === 1 ? (en ? ' [one sample only, not a material-wide range]' : '［仅一个样本，非材料整体范围］') : '';
+      return `${values} ${unit(group.quantity)} · ${R.quantity(group.quantity, lang)} · ${group.method} · ${group.condition}${coverage}`;
+    }).join('；') : (en ? 'No verified comparable range; do not infer from other materials.' : '暂无已核验的同口径范围；不套用其他材料数值。');
+    const examples = info.samples.map(sample => {
+      const label = `${sample.maker} ${sample.grade}: ${sample.bound}${num(sample.value)} ${unit(sample.quantity)}`;
+      const source = sample.archived ? (en ? ' [archived manufacturer-authored sheet]' : '［原厂署名表存档］') : '';
+      return `<a href="${esc(sample.url)}" target="_blank" rel="noopener noreferrer">${esc(label)}</a>${esc(source)}`;
+    }).join('<br>') || (en ? 'No verified grade value published in this catalogue.' : '暂无已核验的同牌号数值。');
+    const source = isCustom(name) || Object.hasOwn(overrides[name] || {}, p.k) ? (en ? 'User value; references do not overwrite it.' : '当前为用户输入；参考值不覆盖已保存修改。')
+      : R.defaultSource(name, p.k) ? (en ? 'Default: selected reference grade, not a design allowable.' : '默认值：所选参考牌号典型值，非许用值。')
+        : (en ? 'Historical example / missing value; not verified against a grade.' : '历史示例值 / 缺项，未按具体牌号逐项核验。');
+    return `<small class="mt-reference" data-reference="${p.k}"><span>${esc(en ? 'Reference range (verified samples only, not a guarantee): ' : '参考范围（仅已核验样本，非保证值）：')}${esc(range)}</span><span>${en ? 'Typical manufacturers: ' : '典型厂商：'}${examples}</span><span>${esc(R.note(name, p.k, lang))}</span><span>${esc(source)}</span></small>`;
+  }
+
   function render() {
     const name = currentName();
     if (!name) return;
@@ -182,12 +239,13 @@
     `;
 
     // 参数编辑表
-    const fields = PARAMS.filter((p) => mat[p.k] !== undefined).map((p) => {
+    const fields = PARAMS.map((p) => {
       const val = mat[p.k];
-      const displayed = typeof val === 'number' ? String(val) : String(val);
+      const displayed = typeof val === 'number' && Number.isFinite(val) ? String(val) : '';
       return `
-        <div class="field"><label>${p.label}</label>
-          <div class="input-row"><input type="number" step="any" class="mt-p" data-k="${p.k}" value="${E.escapeHtml(displayed)}" disabled><span class="unit">${p.unit}</span></div>
+        <div class="field"><label>${propertyLabel(name, p)}</label>
+          <div class="input-row"><input id="mt-p-${p.k}" type="number" step="any" class="mt-p" data-k="${p.k}" aria-label="${E.escapeHtml(p.label)}" placeholder="暂无可靠值，可补填" value="${E.escapeHtml(displayed)}" disabled><span class="unit">${p.unit}</span></div>
+          ${referenceHtml(name, p)}
         </div>`;
     }).join('');
 
@@ -217,6 +275,7 @@
       <h3 class="panel-title"><span class="dot"></span>材料详情（${E.escapeHtml(name)}）${over ? ' <span class="mt-badge">已修改</span>' : ''}${custom ? ' <span class="mt-badge custom">自定义</span>' : ''}</h3>
       ${desc}
       <h4 style="margin:0 0 10px;font-size:14px">特性参数（可编辑）</h4>
+      <div class="note">参考资料核对：${R.checkedAt}。参考范围仅表示下列已核验样本，不是所有牌号的范围或设计许用值；不同标准、调湿状态、温度和方向不合并。缺项显示为空白，不按 0 处理。旧库曲线为历史示意，新增材料不根据标量伪造曲线。</div>
       <div class="grid cols-4">${fields || '<div class="empty-tip">该材料暂无标量参数。</div>'}</div>
       ${curveHtml}
     `;
@@ -286,8 +345,8 @@
       const s = pt[1] !== undefined ? pt[1] : '';
       return `<tr>
         <td style="text-align:center;color:#94a3b8;padding:3px 6px">${i + 1}</td>
-        <td style="padding:3px 6px"><input type="number" step="any" class="${prefix}-curve" data-i="${i}" data-c="e" value="${esc(String(e))}" ${editable ? '' : 'disabled'} style="width:100%;min-width:70px"></td>
-        <td style="padding:3px 6px"><input type="number" step="any" class="${prefix}-curve" data-i="${i}" data-c="s" value="${esc(String(s))}" ${editable ? '' : 'disabled'} style="width:100%;min-width:80px"></td>
+        <td style="padding:3px 6px"><input id="${prefix}-curve-${i}-e" type="number" step="any" class="${prefix}-curve" data-i="${i}" data-c="e" value="${esc(String(e))}" ${editable ? '' : 'disabled'} style="width:100%;min-width:70px"></td>
+        <td style="padding:3px 6px"><input id="${prefix}-curve-${i}-s" type="number" step="any" class="${prefix}-curve" data-i="${i}" data-c="s" value="${esc(String(s))}" ${editable ? '' : 'disabled'} style="width:100%;min-width:80px"></td>
         <td style="text-align:center;padding:3px 6px"><button class="btn btn-ghost btn-sm ${prefix}-curve-del" type="button" data-i="${i}" style="${editable ? '' : 'display:none'}">✕</button></td>
       </tr>`;
     }).join('');
@@ -349,6 +408,8 @@
       const td = tr.querySelector('td');
       if (td) td.textContent = idx + 1;
     });
+    const prefix = tbody.id.replace('-table-body', '');
+    tbody.querySelectorAll('input').forEach((input, index) => { input.id = `${prefix}-curve-${Math.floor(index / 2)}-${input.dataset.c}`; });
   }
 
   function saveCurrent() {
@@ -389,7 +450,7 @@
     const box = document.getElementById('mt-new-form');
     if (box.style.display === 'block') { box.style.display = 'none'; return; }
     const paramInputs = PARAMS.map((p) =>
-      `<div class="field"><label>${p.label}（${p.unit}）</label><div class="input-row"><input type="number" step="any" class="mtn-p" data-k="${p.k}"></div></div>`).join('');
+      `<div class="field"><label>${p.label}（${p.unit}）</label><div class="input-row"><input id="mtn-p-${p.k}" type="number" step="any" class="mtn-p" data-k="${p.k}"></div></div>`).join('');
     box.innerHTML = `
       <div class="panel">
         <h3 class="panel-title"><span class="dot"></span>新增材料</h3>
@@ -464,8 +525,7 @@
     const r = T.reportLanguage(lang);
     const esc = E.escapeHtml;
     const meta = `<tr><td>${esc(mat.cn || '')}</td><td>${esc(mat.en || '')}</td><td>${esc(mat.abbr || '')}</td><td>${esc(r(mat.category))}</td></tr>`;
-    const propRows = PARAMS.filter((p) => mat[p.k] !== undefined)
-      .map((p) => `<tr><td>${r(p.label)}</td><td>${p.unit}</td><td>${mat[p.k]}</td><td></td></tr>`).join('');
+    const propRows = PARAMS.map((p) => `<tr><td>${esc(propertyLabel(name, p, lang))}</td><td>${p.unit}</td><td>${typeof mat[p.k] === 'number' && Number.isFinite(mat[p.k]) ? mat[p.k] : '—'}</td><td>${referenceHtml(name, p, lang)}</td></tr>`).join('');
     const curveRows = (curve || []).map(([e, s]) => `<tr><td>${e}</td><td>${s}</td></tr>`).join('');
     return r`
       <h3>${esc(name)}</h3>

@@ -80,6 +80,23 @@ const {chromium} = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
     await page.evaluate(()=>ElectricalToolkit.open('data-charts'));
     assert.equal(await page.locator('[data-row="1"][data-col="1"]').inputValue(),'未完成','unfinished data survives draft restore');
     assert.match(await page.locator('.dc-status').textContent(),/有限数值/);
+    const adapterChecks=await page.evaluate(async()=>{
+      const adapter=ElectricalProjectAdapters.get('data-charts');
+      const payload=adapter.capture(document.querySelector('.calc-body'));
+      const snapshot=await ElectricalProjectController.captureWorkspace();
+      const packed=await ElectricalBackupFormat.pack(snapshot.value);
+      const inspected=await ElectricalBackupFormat.inspect(packed.value.files,{adapters:ElectricalProjectAdapters});
+      const restored=inspected.value.validProjects.find(p=>p.moduleId==='data-charts');
+      return {unfinished:adapter.validate(payload).ok,corrupt:adapter.validate({...payload,model:{corrupt:true}}).ok,inBackup:snapshot.value.projects.some(p=>p.moduleId==='data-charts'&&p.payload.model.table[1][1]==='未完成'),roundtrip:JSON.stringify(restored.payload.model)===JSON.stringify(payload.model)};
+    });
+    assert.equal(adapterChecks.unfinished,true);assert.equal(adapterChecks.corrupt,false);assert.equal(adapterChecks.inBackup,true);assert.equal(adapterChecks.roundtrip,true);
+    await page.locator('[data-row="1"][data-col="1"]').fill('900');
+    let staleDownloads=0;page.on('download',()=>staleDownloads++);
+    await page.evaluate(()=>{const realFetch=window.fetch;window.fetch=async(...args)=>{await new Promise(resolve=>setTimeout(resolve,600));return realFetch(...args);};});
+    await page.locator('[data-action=png]').click();
+    await page.evaluate(()=>ElectricalProjectController.newProject('导出隔离验证'));
+    await page.waitForTimeout(800);
+    assert.equal(staleDownloads,0,'PNG export canceled after project switch');
     assert.deepEqual(errors,[]);
     console.log('PASS 21 charts, editing, CSV/Excel/JSON imports, all 5 exports, PNG size, undo/redo, paste, validation, drafts and mobile layout');
   } finally {await browser.close();}

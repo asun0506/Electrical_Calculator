@@ -84,13 +84,13 @@
     a.href=url;a.download=(project.settings.title||'数据图表').replace(/[<>:"/\\|?*\x00-\x1f]/g,'_').slice(0,80)+'.'+extension;a.click();setTimeout(()=>URL.revokeObjectURL(url),10000);
   }
   async function exportImage(format) {
-    const p=C.normalizeProject(project);let temporary;
+    const p=C.normalizeProject(project), exportHost=host, token=window.ElUtil.editSession();let temporary;
     const box=document.createElement('div');box.style.cssText=`position:fixed;left:-10000px;top:0;width:${p.settings.width}px;height:${p.settings.height}px;`;document.body.appendChild(box);
     try {
       temporary=window.echarts.init(box,null,{renderer:format==='svg'?'svg':'canvas',width:p.settings.width,height:p.settings.height});
       temporary.setOption({...C.buildOption(p),animation:false});
       if(format==='svg') download(temporary.renderToSVGString(),'svg','image/svg+xml;charset=utf-8');
-      else {const data=temporary.getDataURL({type:'png',pixelRatio:2,backgroundColor:p.settings.background});const blob=await (await fetch(data)).blob();download(blob,'png','image/png');}
+      else {const data=temporary.getDataURL({type:'png',pixelRatio:2,backgroundColor:p.settings.background});const blob=await (await fetch(data)).blob();if(host!==exportHost||!window.ElUtil.editSessionCurrent(token))return;download(blob,'png','image/png');}
       status('已导出 '+format.toUpperCase()+' 图片');
     } finally {if(temporary)temporary.dispose();box.remove();}
   }
@@ -153,6 +153,7 @@
     finally {event.target.value='';}
   }
   T.register({id:'data-charts',title:'数据图表',group:'数据与文档',desc:'21 种图表 · 表格在线编辑 · 数据导入导出 · 标题、图例、标签与坐标自定义',render,
+    validateDraft(saved) {try{C.normalizeProject(saved,{draft:true});return true;}catch{return false;}},
     captureDraft:()=>clone(project),
     restoreDraft(saved) {if(saved) {try{project=C.normalizeProject(saved,{draft:true});updateAll();}catch(error){status('草稿无法恢复：'+error.message,true);}}},
     refreshDraft:()=>updateAll(),
