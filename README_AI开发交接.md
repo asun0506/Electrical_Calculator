@@ -43,10 +43,11 @@ Node.js、pnpm、Playwright 和开发依赖用于验证，不是用户运行条�
 
 ## 3. 全部当前功能模块
 
-以下 20 个模块是当前入口实际注册的导航功能。旧文件仍在目录不代表有独立导航入口。
+以下 21 个模块是当前入口实际注册的导航功能。旧文件仍在目录不代表有独立导航入口。
 
 | ID | 功能 | 首要源码/数据 | 接手重点 |
 | --- | --- | --- | --- |
+| `table-tools` | 可编辑样式表格工具 | `js/table-tools-core.js`、`js/calc-table-tools.js`、`css/table-tools.css` | 10种样式（含P18评审配色）、全表与单元格格式、Excel区域粘贴、HTML剪贴板及降级复制；基于本地JSZip生成原生DrawingML表格PPTX，长表分页重复表头；schema 1，独立项目与备份；限制50行20列、5MB JSON；测试 `tests/table-tools*.cjs` |
 | `data-charts` | 数据图表编辑器（21种） | `js/data-charts-core.js`、`js/calc-data-charts.js`、`css/data-charts.css` | 离线 ECharts 5.6.0；数据表格/粘贴、CSV/TSV/XLSX/JSON 导入，CSV/XLSX/工程 JSON/PNG/SVG 导出；集合模型 schema 2（activeId、activeByType、charts，每个 chart 为 schema 1），兼容旧单图表；项目→类型→命名图表，标题菜单位于类型下方；切换类型恢复对应选择而不转换图表；同类型内新建/复制/删除，最多100张，各图表40步撤销重做独立，动态草稿与备份保存全部图表；单图数据限制2000行、20数值列，导入5MB；测试 `tests/data-charts*.cjs` |
 | `relay-fuse` | 电池包等效内阻、最大外短电流、继电器/保险丝保护曲线配合 | `js/calc-relay-fuse.js` | 多电阻段尺寸/定值、数量串并联、组合表达式、曲线和人工校核分析；JSON 与中英文 PDF |
 | `conductor` | 电池包RLC校核（保留原电阻模块ID） | `js/calc-conductor.js`、`js/rlc-core.js` | 电阻网络/限值、直段电感及手动覆盖、RL短路响应、Y/寄生电容与接触路径能量；JSON schema 3兼容旧项目，中英文报告 |

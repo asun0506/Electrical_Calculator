@@ -5,6 +5,7 @@
   let project=C.defaults(), chart=null, observer=null, host=null, valid=false, revision=0;
   let collection=C.normalizeCollection(project), history=[], future=[];
   const chartHistories=new Map();
+  let colorTarget=0;
   const clone=v=>JSON.parse(JSON.stringify(v));
   const $=s=>host.querySelector(s);
   function icon(type) {
@@ -102,11 +103,19 @@
       ${section('图例',check('legend','显示图例')+select('legendPosition','位置',[['bottom','底部'],['top','顶部'],['left','左侧'],['right','右侧']])+'<p class="dc-note">在表头编辑系列名称。点击预览中的图例可显示或隐藏系列。</p>',true)}
       ${section('数据标签',check('labels','显示数据标签')+select('labelFormat','内容',[['value','数值'],['name','名称'],['percent','百分比（饼图类）']])+select('labelPosition','位置',[['top','上方 / 饼图外侧'],['inside','内部'],['bottom','下方 / 饼图外侧']])+field('labelSize','字号','number','min="8" max="28"'))}
       ${section('坐标轴与网格',check('axis','显示坐标轴')+check('grid','显示网格')+field('xName','X 轴名称')+field('yName','Y 轴名称')+`<div class="dc-field-row">${field('xMin','X 最小值','number','placeholder="自动"')}${field('xMax','X 最大值','number','placeholder="自动"')}</div><div class="dc-field-row">${field('yMin','Y 最小值','number','placeholder="自动"')}${field('yMax','Y 最大值','number','placeholder="自动"')}</div>`+field('rotate','分类标签旋转角度','number','min="-90" max="90"')+'<p class="dc-note">范围仅用于数值轴；横向条形图的数值轴为 X 轴。饼图、雷达图和河流图不使用这些数值轴配置。</p>')}
-      ${section('配色与样式',field('background','画布背景','color')+field('textColor','文字颜色','color')+'<label class="dc-field">系列 / 分类配色</label><div class="dc-colors"></div>'+check('smooth','平滑折线')+check('animation','启用预览动画'))}
+      ${section('配色与样式',field('background','画布背景','color')+field('textColor','文字颜色','color')+'<div class="dc-color-editor"><label class="dc-field">整组配色<select data-theme><option value="">选择配色方案</option>'+C.colorThemes.map((theme,i)=>`<option value="${i}">${theme.name}</option>`).join('')+'</select></label><label class="dc-field">要修改的系列 / 分类颜色<select data-color-target></select></label><div class="dc-colors"></div><p class="dc-note">选中配色位置后点击标准色；点击下方色块可继续使用自定义取色器。</p><div class="dc-standard-colors">'+C.standardColors.map(([color,name])=>`<button type="button" data-standard-color="${color}" title="${name} ${color}" aria-label="标准色：${name}" style="background:${color}"></button>`).join('')+'</div></div>'+check('smooth','平滑折线')+check('animation','启用预览动画'))}
       ${section('画布与导出尺寸',`<div class="dc-field-row">${field('width','宽度 px','number','min="320" max="2400"')}${field('height','高度 px','number','min="240" max="1600"')}</div>`+'<p class="dc-note">预览按画布比例适配。PNG 以双倍像素导出，SVG 可无损缩放。</p>')}
       </div></aside></div></div>`;
     chart=window.echarts.init($('.dc-chart'),null,{renderer:'svg'});
     host.addEventListener('input',onInput);host.addEventListener('click',onClick);host.addEventListener('paste',onPaste);
+    window.GridEditing.bind(host,'.dc-table [data-row]');
+    $('[data-color-target]').addEventListener('change',event=>{colorTarget=Number(event.target.value);colorUI();});
+    $('[data-theme]').addEventListener('change',event=>{
+      if(event.target.value==='')return;
+      remember();const theme=C.colorThemes[Number(event.target.value)];project.settings.colors=theme.colors.slice();
+      for(const key of ['background','textColor'])if(theme[key])project.settings[key]=theme[key];
+      updateAll();notify();event.target.value='';
+    });
     $('.dc-file').addEventListener('change',importFile);
     $('[data-chart-select]').addEventListener('change',event=>switchChart(event.target.value));
     observer=new ResizeObserver(()=>{if(!host.isConnected){observer.disconnect();chart.dispose();return;}resize();});
@@ -119,10 +128,17 @@
     chartList();
     host.querySelectorAll('[data-type]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.type===project.type)));
     host.querySelectorAll('[data-setting]').forEach(input=>{const v=project.settings[input.dataset.setting];if(input.type==='checkbox')input.checked=v;else input.value=v;});
-    $('.dc-colors').innerHTML=project.settings.colors.map((c,i)=>`<input type="color" data-color="${i}" aria-label="配色 ${i+1}" value="${c}">`).join('');
+    colorUI();
     const hints={candlestick:'需要 5 列：日期、开盘、收盘、最低、最高；按此顺序绘制。',scatter:'第一列为数值 X，其余列各为一组 Y 值。',river:'第一列为 YYYY-MM-DD 日期（不可重复），其余列为各系列的非负数值。',radar:'第一列为指标名称，每个数值列为一个系列；数值应非负。',waterfall:'第一列为阶段，第二列为增减量；负值表示减少，按行累计。'};
     $('.dc-format').textContent=hints[project.type]||(['pie','donut','rose','funnel'].includes(project.type)?'第一列为分类标签，第二列为非负数值；此类图表仅使用第一个数值列。':['bar','line','horizontal-bar','step'].includes(project.type)?'第一列为分类，第二列为数值。绘制多个数值列请选分组或堆叠类型。':'第一列为分类，其余数值列分别绘制为系列。');
     tableUI();preview();
+  }
+  function colorUI(){
+    colorTarget=Math.min(colorTarget,project.settings.colors.length-1);
+    const names=['pie','donut','rose','funnel'].includes(project.type)?project.table.slice(1).map(row=>row[0]):project.table[0].slice(1);
+    $('[data-color-target]').innerHTML=project.settings.colors.map((_,i)=>`<option value="${i}">配色 ${i+1}${names[i]?' · '+esc(names[i]):''}</option>`).join('');
+    $('[data-color-target]').value=String(colorTarget);
+    $('.dc-colors').innerHTML=project.settings.colors.map((c,i)=>`<input type="color" data-color="${i}" aria-label="自定义配色 ${i+1}" title="自定义配色 ${i+1}" value="${c}" ${i===colorTarget?'class="dc-color-selected"':''}>`).join('');
   }
   function resize() {
     const width=Math.max(240,$('.dc-preview-stage').clientWidth-32), s=project.settings;
@@ -141,7 +157,7 @@
     const el=event.target;
     if(el.matches('[data-row]')) {remember();project.table[Number(el.dataset.row)][Number(el.dataset.col)]=el.value;preview();}
     else if(el.dataset.setting) {remember();const key=el.dataset.setting;project.settings[key]=el.type==='checkbox'?el.checked:el.type==='number'&&el.value!==''?Number(el.value):el.value;if(key==='title')chartList();preview();}
-    else if(el.dataset.color!==undefined) {remember();project.settings.colors[Number(el.dataset.color)]=el.value;preview();}
+    else if(el.dataset.color!==undefined) {remember();colorTarget=Number(el.dataset.color);project.settings.colors[colorTarget]=el.value;preview();}
   }
   function download(data,extension,mime) {
     const blob=data instanceof Blob?data:new Blob([data],{type:mime}); const url=URL.createObjectURL(blob),a=document.createElement('a');
@@ -159,8 +175,10 @@
     } finally {if(temporary)temporary.dispose();box.remove();}
   }
   async function onClick(event) {
+    if(event.target.dataset.color!==undefined){colorTarget=Number(event.target.dataset.color);$('[data-color-target]').value=String(colorTarget);host.querySelectorAll('[data-color]').forEach(el=>el.classList.toggle('dc-color-selected',Number(el.dataset.color)===colorTarget));}
     const button=event.target.closest('button');if(!button)return;
     try {
+      if(button.dataset.standardColor){remember();project.settings.colors[colorTarget]=button.dataset.standardColor;colorUI();preview();notify();return;}
       if(button.dataset.type) {switchType(button.dataset.type);return;}
       if(button.dataset.deleteRow) {if(project.table.length<=2)throw new Error('至少保留一行数据');remember();project.table.splice(Number(button.dataset.deleteRow),1);tableUI();preview();notify();return;}
       if(button.dataset.deleteCol) {if(project.table[0].length<=2)throw new Error('至少保留一个数值列');remember();project.table.forEach(r=>r.splice(Number(button.dataset.deleteCol),1));tableUI();preview();notify();return;}

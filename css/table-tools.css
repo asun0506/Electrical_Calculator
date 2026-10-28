@@ -1,0 +1,33 @@
+.tt-tool {display:grid;gap:18px}
+.tt-panel {padding:20px;border:1px solid var(--border);border-radius:12px;background:white;min-width:0}
+.tt-tool h3,.tt-tool p {margin:0}
+.tt-toolbar {display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.tt-layout {display:grid;grid-template-columns:minmax(0,3fr) minmax(340px,2fr);gap:18px;align-items:start}
+.tt-heading {display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+.tt-presets {display:grid;grid-template-columns:repeat(auto-fit,minmax(105px,1fr));gap:9px}
+.tt-preset {background:#fff;border:1px solid var(--border);border-radius:8px;padding:9px;cursor:pointer;color:var(--text);font:inherit;font-size:12px}
+.tt-preset[aria-pressed=true] {outline:2px solid var(--primary);outline-offset:-2px}
+.tt-mini {display:grid;grid-template-columns:repeat(3,1fr);gap:1px;margin-bottom:6px;background:#cbd5e1;border:1px solid #cbd5e1}
+.tt-mini i {height:9px;display:block}
+.tt-fields {display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding-top:12px}
+.tt-field {display:grid;gap:5px;font-size:12px;color:var(--text-muted);min-width:0}
+.tt-full {grid-column:1/-1}
+.tt-tool input:not([type=checkbox]):not([type=color]),.tt-tool select {padding:8px;border:1px solid var(--border);border-radius:6px;min-width:0;width:100%;font:inherit;color:var(--text);background:white}
+.tt-tool input[type=color] {width:100%;height:33px;border:1px solid var(--border);border-radius:5px;padding:3px;background:white;cursor:pointer}
+.tt-check {display:flex;gap:8px;align-items:center;font-size:12px;min-height:32px}
+.tt-tool details {padding:14px 0;border-bottom:1px solid var(--border)}
+.tt-tool details:last-child {border-bottom:0}
+.tt-tool summary {font-size:13px;font-weight:600;cursor:pointer}
+.tt-note {font-size:12px;color:var(--text-muted);line-height:1.8}
+.tt-stage {padding:16px;background:#edf1f6;border-radius:8px;overflow:auto;max-height:680px;min-width:0}
+.tt-editor {table-layout:fixed;border-collapse:collapse;background:white;margin:0}
+.tt-editor td {min-width:0;position:relative}
+.tt-editor textarea {display:block;width:100%;min-width:0;min-height:1.4em;line-height:1.3;border:0;padding:0;resize:none;background:transparent;color:inherit;font:inherit;text-align:inherit;white-space:pre-wrap;overflow:hidden;outline:none}
+.tt-editor td.tt-selected {outline:2px solid var(--primary);outline-offset:-2px}
+.tt-status {font-size:13px;color:var(--primary);padding:10px 14px;border-radius:8px;background:#eff6ff}
+.tt-status:empty {display:none}
+.tt-status[data-error=true] {background:#fef2f2;color:#b91c1c}
+.tt-tool :is(input,textarea,button,select,summary):focus-visible {outline:2px solid var(--primary);outline-offset:2px}
+.tt-row-count {max-width:120px}
+@media(max-width:1250px){.tt-layout{grid-template-columns:minmax(0,1fr)}.tt-settings>div{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.tt-presets{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:600px){.tt-panel{padding:14px}.tt-settings>div{grid-template-columns:1fr}.tt-presets{grid-template-columns:repeat(2,minmax(0,1fr))}.tt-toolbar .btn{font-size:12px;padding:7px 9px}}

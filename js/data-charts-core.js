@@ -1,6 +1,7 @@
 /* Editable chart projects and pure data transformations. No DOM dependencies. */
 (function (root) {
   'use strict';
+  const p18=typeof module==='object'&&module.exports?require('./presentation-palettes.js').p18:root.PresentationPalettes.p18;
   const types = [
     ['bar','柱状图'],['radar','雷达图'],['line','折线图'],['pie','饼图'],['rose','南丁格尔玫瑰图'],['candlestick','K线图'],
     ['river','河流图'],['donut','环形图'],['scatter','散点图'],['funnel','漏斗图'],['grouped-bar','分组柱状图'],['grouped-line','分组折线图'],
@@ -8,6 +9,16 @@
     ['negative-bar','正负条形图'],['stacked-horizontal','堆叠条形图'],['grouped-horizontal','分组条形图'],['stacked-area','堆叠面积图']
   ].map(([id, name]) => ({id, name}));
   const palette = ['#2589ef','#39ba9a','#ffc247','#9073df','#f27884','#35bdd2','#e59655','#76869c'];
+  const standardColors=[['#000000','黑色'],['#ffffff','白色'],['#475569','深灰'],['#94a3b8','灰色'],['#dc2626','红色'],['#ea580c','橙色'],['#facc15','黄色'],['#65a30d','草绿'],['#16a34a','绿色'],['#0d9488','青绿'],['#0891b2','青色'],['#2563eb','蓝色'],['#1e3a8a','深蓝'],['#7c3aed','紫色'],['#c026d3','品红'],['#db2777','粉红'],['#fee2e2','浅红'],['#ffedd5','浅橙'],['#fef9c3','浅黄'],['#dcfce7','浅绿'],['#ccfbf1','浅青绿'],['#e0f2fe','浅蓝'],['#ede9fe','浅紫'],['#fce7f3','浅粉']];
+  const colorThemes=[
+    {name:'经典多彩',colors:palette},
+    {name:'Office 经典',colors:['#4472c4','#ed7d31','#a5a5a5','#ffc000','#5b9bd5','#70ad47','#264478','#9e480e']},
+    {name:'沉稳商务',colors:['#173b5e','#3975a7','#7ca6c6','#c29a48','#727c89','#a3b4c4','#496f68','#b7c8d2']},
+    {name:'清新自然',colors:['#26734d','#4fa37b','#8ac1a4','#d3b35f','#9aaf57','#6b9fa1','#88b3d9','#c7d9c0']},
+    {name:'暖色系列',colors:['#b91c1c','#ea580c','#f59e0b','#facc15','#f87171','#fb923c','#fbbf24','#fed7aa']},
+    {name:'蓝紫系列',colors:['#1e3a8a','#2563eb','#38bdf8','#7c3aed','#a78bfa','#0e7490','#6366f1','#c4b5fd']},
+    {id:'p18-review',name:'青蓝',colors:p18.chartColors,background:p18.white,textColor:p18.ink}
+  ];
   function defaults(type = 'bar') {
     let table = [['月份','实际值','目标值','参考值'],['一月',120,100,80],['二月',160,140,110],['三月',135,150,100],['四月',210,180,150],['五月',185,200,130],['六月',245,220,170]];
     if(type === 'candlestick') table = [['日期','开盘','收盘','最低','最高'],['2026-01-01',20,24,18,26],['2026-01-02',24,22,21,27],['2026-01-03',22,28,20,30],['2026-01-04',28,26,23,31]];
@@ -166,7 +177,7 @@
     }
     return option;
   }
-  const api={types,palette,defaults,parseDelimited,toCSV,normalizeTable,normalizeProject,normalizeCollection,buildOption};
+  const api={types,palette,standardColors,colorThemes,defaults,parseDelimited,toCSV,normalizeTable,normalizeProject,normalizeCollection,buildOption};
   if(typeof module==='object'&&module.exports) module.exports=api;
   else root.DataChartsCore=api;
 })(typeof window==='undefined'?globalThis:window);

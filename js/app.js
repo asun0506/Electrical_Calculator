@@ -24,6 +24,7 @@
   let flushDraft = null;
 
   const MODULE_ICONS = {
+    'table-tools': '<rect x="2" y="2" width="14" height="12" rx="1"/><path d="M2 6h14M2 10h14M7 2v12M12 2v12"/>',
     'data-charts': '<path d="M2 13h14M4 11V7m5 4V2m5 9V5"/>',
     'relay-fuse': '<path d="M2.5 5h4M11.5 5h4M6.5 5l5 3-5 3m5-3h4"/>',
     conductor: '<circle cx="4" cy="8" r="2"/><circle cx="14" cy="8" r="2"/><path d="M6 8h6"/>',

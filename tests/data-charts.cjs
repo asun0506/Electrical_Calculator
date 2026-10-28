@@ -1,5 +1,8 @@
 const assert = require('node:assert/strict');
 const C = require('../js/data-charts-core.js');
+const p18=C.colorThemes.find(theme=>theme.id==='p18-review');
+assert.deepEqual(p18.colors,['#00bebe','#00243b','#004b63','#545859','#b8e8eb','#dcdcdc']);
+assert.equal(p18.textColor,'#000f17');
 const migrated=C.normalizeCollection(C.defaults());
 assert.equal(migrated.schema,2);assert.equal(migrated.charts.length,1);
 assert.equal(migrated.charts[0].chart.settings.title,'数据图表');

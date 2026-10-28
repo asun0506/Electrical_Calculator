@@ -1,0 +1,11 @@
+const assert=require('node:assert/strict');
+const G=require('../js/grid-editing.js');
+assert.deepEqual(G.nextCell(0,0,3,3,'ArrowRight'),[0,1]);
+assert.deepEqual(G.nextCell(1,1,3,3,'ArrowUp'),[0,1]);
+assert.deepEqual(G.nextCell(1,2,3,3,'Tab'),[2,0]);
+assert.deepEqual(G.nextCell(1,0,3,3,'Tab',true),[0,2]);
+assert.equal(G.nextCell(2,2,3,3,'Tab'),null,'Tab can leave the final cell');
+assert.equal(G.nextCell(0,0,3,3,'Tab',true),null);
+assert.deepEqual(G.nextCell(0,0,3,3,'ArrowLeft'),[0,0]);
+assert.equal(G.nextCell(0,0,3,3,'x'),null);
+console.log('PASS arrow navigation, row wrapping, Shift+Tab and focus escape');
